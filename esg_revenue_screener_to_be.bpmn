@@ -1,0 +1,501 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" id="Definitions_ESGRevenueScreener" targetNamespace="http://example.com/esg-revenue-screener" exporter="Camunda Modeler" exporterVersion="5.51.0">
+  <bpmn:collaboration id="Collaboration_ESG">
+    <bpmn:participant id="Participant_ESG" name="ESG Revenue Screener — To-Be Process" processRef="Process_ESG" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_ESG" name="ESG Revenue Screening" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_ESG">
+      <bpmn:lane id="Lane_Airtable" name="Streamlit Dashboard / User Interface">
+        <bpmn:flowNodeRef>StartEvent_Request</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SelectCompany</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_08p3t36</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_0agguhg</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_DisplayResults</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_Complete</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_0relolg</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_External" name="External Data">
+        <bpmn:flowNodeRef>Task_CompaniesHouse</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_n8n" name="n8n — Workflow Orchestration">
+        <bpmn:flowNodeRef>Task_ReceiveRequest</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_1vyqiip</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_GetFilingHistory</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_AccountsFound</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_FlagNoAccounts</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_DownloadAccounts</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_DocumentProcessing</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_HandleFailure</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_Failure</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_0blj7hi</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_12mi0zn</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_LLMExtraction</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ExtractRevenue</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ClassifyStreams</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_LLMClassification</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_WriteSheets</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_UpdateAirtable</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Boundary_Error</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:serviceTask id="Task_ReceiveRequest" name="Retrieve company identifier from DB">
+      <bpmn:incoming>Flow_07m3zp4</bpmn:incoming>
+      <bpmn:outgoing>Flow_1axwcr7</bpmn:outgoing>
+      <bpmn:property id="Property_1wc6lew" name="__targetRef_placeholder" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_07evsv3">
+        <bpmn:sourceRef>DataStoreReference_153xxlw</bpmn:sourceRef>
+        <bpmn:targetRef>Property_1wc6lew</bpmn:targetRef>
+      </bpmn:dataInputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:task id="Activity_1vyqiip" name="Use company ID and CRN to search for existing company filing record">
+      <bpmn:incoming>Flow_1axwcr7</bpmn:incoming>
+      <bpmn:outgoing>Flow_1gpxxms</bpmn:outgoing>
+      <bpmn:property id="Property_0ki5bwh" name="__targetRef_placeholder" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_1mikg9a">
+        <bpmn:sourceRef>DataStoreReference_1gs8h37</bpmn:sourceRef>
+        <bpmn:targetRef>Property_0ki5bwh</bpmn:targetRef>
+      </bpmn:dataInputAssociation>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_07m3zp4" sourceRef="Activity_08p3t36" targetRef="Task_ReceiveRequest" />
+    <bpmn:sequenceFlow id="Flow_1axwcr7" sourceRef="Task_ReceiveRequest" targetRef="Activity_1vyqiip" />
+    <bpmn:sequenceFlow id="Flow_10" sourceRef="Task_DocumentProcessing" targetRef="Task_LLMExtraction" />
+    <bpmn:sequenceFlow id="Flow_16" sourceRef="Task_LLMClassification" targetRef="Task_WriteSheets" />
+    <bpmn:startEvent id="StartEvent_Request" name="User wants to screen a company">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_SelectCompany" name="Select one or more from a list of positive or exclusionary ESG criteria to screen against">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_1cr3mmn</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_08p3t36" name="Set a threshold value for each criterion which will be the max/min depending on the screening type (positive/exclusionary)">
+      <bpmn:incoming>Flow_1cr3mmn</bpmn:incoming>
+      <bpmn:outgoing>Flow_07m3zp4</bpmn:outgoing>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_10x3yzl">
+        <bpmn:targetRef>DataStoreReference_1ibpp5r</bpmn:targetRef>
+      </bpmn:dataOutputAssociation>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_Request" targetRef="Task_SelectCompany" />
+    <bpmn:sequenceFlow id="Flow_1cr3mmn" sourceRef="Task_SelectCompany" targetRef="Activity_08p3t36" />
+    <bpmn:dataStoreReference id="DataStoreReference_153xxlw" />
+    <bpmn:dataStoreReference id="DataStoreReference_1ibpp5r" />
+    <bpmn:sequenceFlow id="Flow_1gpxxms" sourceRef="Activity_1vyqiip" targetRef="Task_GetFilingHistory" />
+    <bpmn:serviceTask id="Task_GetFilingHistory" name="Use company CRN to find latest filing in Companies House API">
+      <bpmn:incoming>Flow_1gpxxms</bpmn:incoming>
+      <bpmn:outgoing>Flow_7</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1qhqdpp</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_CompaniesHouse" name="Companies House API returns filing history">
+      <bpmn:incoming>Flow_7</bpmn:incoming>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_AccountsFound" name="Relevant accounts filing found?">
+      <bpmn:incoming>Flow_1qhqdpp</bpmn:incoming>
+      <bpmn:outgoing>Flow_YesAccounts</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoAccounts</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_FlagNoAccounts" name="Flag unavailable accounts / no suitable filing">
+      <bpmn:incoming>Flow_NoAccounts</bpmn:incoming>
+      <bpmn:outgoing>Flow_0gc8prc</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:serviceTask id="Task_DownloadAccounts" name="Download latest relevant accounts document">
+      <bpmn:incoming>Flow_8</bpmn:incoming>
+      <bpmn:outgoing>Flow_9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_DocumentProcessing" name="Extract PDF text / tables; apply OCR if required">
+      <bpmn:incoming>Flow_9</bpmn:incoming>
+      <bpmn:incoming>Flow_0mo4h0x</bpmn:incoming>
+      <bpmn:outgoing>Flow_10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:task id="Task_HandleFailure" name="Record failure and update Airtable with error status">
+      <bpmn:incoming>Flow_Error</bpmn:incoming>
+      <bpmn:outgoing>Flow_FailureEnd</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="EndEvent_Failure" name="User informed screening could not complete">
+      <bpmn:incoming>Flow_FailureEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="Boundary_Error" name="Technical/API error" attachedToRef="Task_GetFilingHistory">
+      <bpmn:outgoing>Flow_Error</bpmn:outgoing>
+      <bpmn:errorEventDefinition />
+    </bpmn:boundaryEvent>
+    <bpmn:dataObjectReference id="DataObjectReference_0dq1b91" name="Stretch goal: at the moment companies are pre-selected that have relevant filings" dataObjectRef="DataObject_1np4vdr" />
+    <bpmn:dataObject id="DataObject_1np4vdr" />
+    <bpmn:exclusiveGateway id="Gateway_0blj7hi" name="Does the latest filing match one already in our database?">
+      <bpmn:incoming>Flow_YesAccounts</bpmn:incoming>
+      <bpmn:outgoing>Flow_8</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1qzv97y</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Activity_12mi0zn" name="Fetch file from n8n cloud using file path">
+      <bpmn:incoming>Flow_1qzv97y</bpmn:incoming>
+      <bpmn:outgoing>Flow_0mo4h0x</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Activity_0agguhg" name="Return message to user stating that no relevant filing was found">
+      <bpmn:incoming>Flow_0gc8prc</bpmn:incoming>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_GetFilingHistory" targetRef="Task_CompaniesHouse" />
+    <bpmn:sequenceFlow id="Flow_1qhqdpp" sourceRef="Task_GetFilingHistory" targetRef="Gateway_AccountsFound" />
+    <bpmn:sequenceFlow id="Flow_YesAccounts" name="Yes" sourceRef="Gateway_AccountsFound" targetRef="Gateway_0blj7hi" />
+    <bpmn:sequenceFlow id="Flow_NoAccounts" name="No" sourceRef="Gateway_AccountsFound" targetRef="Task_FlagNoAccounts" />
+    <bpmn:sequenceFlow id="Flow_0gc8prc" sourceRef="Task_FlagNoAccounts" targetRef="Activity_0agguhg" />
+    <bpmn:sequenceFlow id="Flow_8" name="No" sourceRef="Gateway_0blj7hi" targetRef="Task_DownloadAccounts" />
+    <bpmn:sequenceFlow id="Flow_9" sourceRef="Task_DownloadAccounts" targetRef="Task_DocumentProcessing" />
+    <bpmn:sequenceFlow id="Flow_0mo4h0x" sourceRef="Activity_12mi0zn" targetRef="Task_DocumentProcessing" />
+    <bpmn:sequenceFlow id="Flow_Error" sourceRef="Boundary_Error" targetRef="Task_HandleFailure" />
+    <bpmn:sequenceFlow id="Flow_FailureEnd" sourceRef="Task_HandleFailure" targetRef="EndEvent_Failure" />
+    <bpmn:sequenceFlow id="Flow_1qzv97y" name="Yes" sourceRef="Gateway_0blj7hi" targetRef="Activity_12mi0zn" />
+    <bpmn:serviceTask id="Task_LLMExtraction" name="LLM extracts disclosed revenue streams and evidence">
+      <bpmn:incoming>Flow_10</bpmn:incoming>
+      <bpmn:outgoing>Flow_12</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_12" sourceRef="Task_LLMExtraction" targetRef="Task_ExtractRevenue" />
+    <bpmn:sequenceFlow id="Flow_13" sourceRef="Task_ExtractRevenue" targetRef="Task_ClassifyStreams" />
+    <bpmn:sequenceFlow id="Flow_15" sourceRef="Task_ClassifyStreams" targetRef="Task_LLMClassification" />
+    <bpmn:task id="Task_DisplayResults" name="Display all companies with overall RAG category based on whether it meets all criteria (green) or not (red) or is missing information (amber)">
+      <bpmn:incoming>Flow_21</bpmn:incoming>
+      <bpmn:outgoing>Flow_23</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="EndEvent_Complete" name="Screening result available">
+      <bpmn:incoming>Flow_004qcqh</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:task id="Activity_0relolg" name="User selects an individual company or companies for comparison">
+      <bpmn:incoming>Flow_23</bpmn:incoming>
+      <bpmn:outgoing>Flow_004qcqh</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:dataObjectReference id="DataObjectReference_1tvi7pc" name="A company will have an amber rating if for one or more criterion there isn&#39;t enough evidence to determine if it passes or fails AND the company has not failed any other criterion" dataObjectRef="DataObject_1y2xof6" />
+    <bpmn:dataObject id="DataObject_1y2xof6" />
+    <bpmn:sequenceFlow id="Flow_19" sourceRef="Task_WriteSheets" targetRef="Task_UpdateAirtable" />
+    <bpmn:sequenceFlow id="Flow_21" sourceRef="Task_UpdateAirtable" targetRef="Task_DisplayResults" />
+    <bpmn:sequenceFlow id="Flow_23" sourceRef="Task_DisplayResults" targetRef="Activity_0relolg" />
+    <bpmn:sequenceFlow id="Flow_004qcqh" sourceRef="Activity_0relolg" targetRef="EndEvent_Complete" />
+    <bpmn:dataStoreReference id="DataStoreReference_1gs8h37" />
+    <bpmn:serviceTask id="Task_ExtractRevenue" name="Structure extracted revenue data">
+      <bpmn:incoming>Flow_12</bpmn:incoming>
+      <bpmn:outgoing>Flow_13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_ClassifyStreams" name="Classify each revenue stream against user-specified ESG criteria">
+      <bpmn:incoming>Flow_13</bpmn:incoming>
+      <bpmn:outgoing>Flow_15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_LLMClassification" name="LLM proposes Green (pass) / Amber (insufficient info) / Red (fail) for each criteria  with rationale">
+      <bpmn:incoming>Flow_15</bpmn:incoming>
+      <bpmn:outgoing>Flow_16</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_WriteSheets" name="Store company, revenue streams, evidence, criteria and screening results in DB">
+      <bpmn:incoming>Flow_16</bpmn:incoming>
+      <bpmn:outgoing>Flow_19</bpmn:outgoing>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_1arrj3t">
+        <bpmn:targetRef>DataStoreReference_02xgj9p</bpmn:targetRef>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_UpdateAirtable" name="Fetch full company information and screening outcome from table">
+      <bpmn:incoming>Flow_19</bpmn:incoming>
+      <bpmn:outgoing>Flow_21</bpmn:outgoing>
+      <bpmn:property id="Property_02bkuyf" name="__targetRef_placeholder" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_1pow7fl">
+        <bpmn:sourceRef>DataStoreReference_02xgj9p</bpmn:sourceRef>
+        <bpmn:targetRef>Property_02bkuyf</bpmn:targetRef>
+      </bpmn:dataInputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:dataStoreReference id="DataStoreReference_02xgj9p" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_ESG">
+    <bpmndi:BPMNPlane id="BPMNPlane_ESG" bpmnElement="Collaboration_ESG">
+      <bpmndi:BPMNShape id="Shape_Participant" bpmnElement="Participant_ESG" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="4290" height="1050" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Airtable" bpmnElement="Lane_Airtable" isHorizontal="true">
+        <dc:Bounds x="190" y="80" width="4260" height="338" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_External" bpmnElement="Lane_External" isHorizontal="true">
+        <dc:Bounds x="190" y="920" width="4260" height="210" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_n8n" bpmnElement="Lane_n8n" isHorizontal="true">
+        <dc:Bounds x="190" y="418" width="4260" height="502" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Receive" bpmnElement="Task_ReceiveRequest">
+        <dc:Bounds x="585" y="690" width="130" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1m00nfk" bpmnElement="Activity_1vyqiip">
+        <dc:Bounds x="787" y="695" width="165" height="70" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="StartEvent_Request">
+        <dc:Bounds x="282" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="255" y="268" width="90" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Select" bpmnElement="Task_SelectCompany">
+        <dc:Bounds x="375" y="210" width="130" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0dkrw0z" bpmnElement="Activity_08p3t36">
+        <dc:Bounds x="567" y="215" width="165" height="70" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0z3mo1v" bpmnElement="DataStoreReference_153xxlw" bioc:stroke="#205022" bioc:fill="#c8e6c9" color:background-color="#c8e6c9" color:border-color="#205022">
+        <dc:Bounds x="485" y="655" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="376" y="637" width="87" height="66" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataStoreReference_1ibpp5r_di" bpmnElement="DataStoreReference_1ibpp5r" bioc:stroke="#205022" bioc:fill="#c8e6c9" color:background-color="#c8e6c9" color:border-color="#205022">
+        <dc:Bounds x="775" y="275" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="846" y="267" width="87" height="66" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Filing" bpmnElement="Task_GetFilingHistory">
+        <dc:Bounds x="1027" y="690" width="145" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_CH" bpmnElement="Task_CompaniesHouse">
+        <dc:Bounds x="1025" y="970" width="150" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW1" bpmnElement="Gateway_AccountsFound" isMarkerVisible="true">
+        <dc:Bounds x="1305" y="705" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1295" y="765" width="70" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NoAccounts" bpmnElement="Task_FlagNoAccounts">
+        <dc:Bounds x="1630" y="515" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Download" bpmnElement="Task_DownloadAccounts">
+        <dc:Bounds x="1685" y="690" width="150" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Doc" bpmnElement="Task_DocumentProcessing">
+        <dc:Bounds x="1932" y="690" width="155" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Failure" bpmnElement="Task_HandleFailure">
+        <dc:Bounds x="1014" y="515" width="165" height="70" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_FailureEnd" bpmnElement="EndEvent_Failure" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="1222" y="532" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1201" y="572" width="78" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataObjectReference_0dq1b91_di" bpmnElement="DataObjectReference_0dq1b91" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="1402" y="475" width="36" height="50" />
+        <bpmndi:BPMNLabel color:color="#831311">
+          <dc:Bounds x="1479" y="460" width="82" height="80" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_0blj7hi_di" bpmnElement="Gateway_0blj7hi" isMarkerVisible="true">
+        <dc:Bounds x="1475" y="705" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1461" y="648" width="78" height="53" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_12mi0zn_di" bpmnElement="Activity_12mi0zn">
+        <dc:Bounds x="1710" y="800" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0agguhg_di" bpmnElement="Activity_0agguhg">
+        <dc:Bounds x="1655" y="210" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Extract" bpmnElement="Task_LLMExtraction">
+        <dc:Bounds x="2180" y="690" width="160" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Display" bpmnElement="Task_DisplayResults">
+        <dc:Bounds x="3735" y="210" width="170" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End" bpmnElement="EndEvent_Complete">
+        <dc:Bounds x="4292" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="4270" y="276" width="80" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_12xm6e0" bpmnElement="Activity_0relolg">
+        <dc:Bounds x="4015" y="210" width="150" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataObjectReference_1tvi7pc_di" bpmnElement="DataObjectReference_1tvi7pc" bioc:stroke="#6b3c00" bioc:fill="#ffe0b2" color:background-color="#ffe0b2" color:border-color="#6b3c00">
+        <dc:Bounds x="3612" y="185" width="36" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="3539" y="242" width="181" height="66" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataStoreReference_1gs8h37_di" bpmnElement="DataStoreReference_1gs8h37" bioc:stroke="#205022" bioc:fill="#c8e6c9" color:background-color="#c8e6c9" color:border-color="#205022">
+        <dc:Bounds x="755" y="785" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="738" y="827" width="85" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Structure" bpmnElement="Task_ExtractRevenue">
+        <dc:Bounds x="2437" y="690" width="145" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Classify" bpmnElement="Task_ClassifyStreams">
+        <dc:Bounds x="2685" y="690" width="150" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LLMClass" bpmnElement="Task_LLMClassification">
+        <dc:Bounds x="2945" y="690" width="170" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Write" bpmnElement="Task_WriteSheets">
+        <dc:Bounds x="3207" y="685" width="165" height="90" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Update" bpmnElement="Task_UpdateAirtable">
+        <dc:Bounds x="3482" y="690" width="155" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataStoreReference_02xgj9p_di" bpmnElement="DataStoreReference_02xgj9p" bioc:stroke="#205022" bioc:fill="#c8e6c9" color:background-color="#c8e6c9" color:border-color="#205022">
+        <dc:Bounds x="3405" y="795" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Boundary" bpmnElement="Boundary_Error">
+        <dc:Bounds x="1079" y="672" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1023" y="611" width="67" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_07m3zp4_di" bpmnElement="Flow_07m3zp4">
+        <di:waypoint x="650" y="285" />
+        <di:waypoint x="650" y="690" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1axwcr7_di" bpmnElement="Flow_1axwcr7">
+        <di:waypoint x="715" y="730" />
+        <di:waypoint x="787" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_10" bpmnElement="Flow_10">
+        <di:waypoint x="2087" y="730" />
+        <di:waypoint x="2180" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_16" bpmnElement="Flow_16">
+        <di:waypoint x="3115" y="730" />
+        <di:waypoint x="3207" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_1" bpmnElement="Flow_1">
+        <di:waypoint x="318" y="250" />
+        <di:waypoint x="375" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1cr3mmn_di" bpmnElement="Flow_1cr3mmn">
+        <di:waypoint x="505" y="250" />
+        <di:waypoint x="567" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1gpxxms_di" bpmnElement="Flow_1gpxxms">
+        <di:waypoint x="952" y="730" />
+        <di:waypoint x="1027" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_7" bpmnElement="Flow_7">
+        <di:waypoint x="1100" y="770" />
+        <di:waypoint x="1100" y="970" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1qhqdpp_di" bpmnElement="Flow_1qhqdpp">
+        <di:waypoint x="1172" y="730" />
+        <di:waypoint x="1305" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Yes" bpmnElement="Flow_YesAccounts">
+        <di:waypoint x="1355" y="730" />
+        <di:waypoint x="1475" y="730" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1371" y="714" width="18" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_No" bpmnElement="Flow_NoAccounts" bioc:stroke="#831311" color:border-color="#831311">
+        <di:waypoint x="1330" y="705" />
+        <di:waypoint x="1330" y="550" />
+        <di:waypoint x="1630" y="550" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1337" y="668" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0gc8prc_di" bpmnElement="Flow_0gc8prc" bioc:stroke="#831311" color:border-color="#831311">
+        <di:waypoint x="1705" y="515" />
+        <di:waypoint x="1705" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_8" bpmnElement="Flow_8">
+        <di:waypoint x="1525" y="730" />
+        <di:waypoint x="1685" y="730" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1582" y="712" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_9" bpmnElement="Flow_9">
+        <di:waypoint x="1835" y="730" />
+        <di:waypoint x="1932" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0mo4h0x_di" bpmnElement="Flow_0mo4h0x">
+        <di:waypoint x="1810" y="840" />
+        <di:waypoint x="2010" y="840" />
+        <di:waypoint x="2010" y="770" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error" bpmnElement="Flow_Error" bioc:stroke="#831311" color:border-color="#831311">
+        <di:waypoint x="1097" y="672" />
+        <di:waypoint x="1097" y="585" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_FailureEnd" bpmnElement="Flow_FailureEnd" bioc:stroke="#831311" color:border-color="#831311">
+        <di:waypoint x="1179" y="550" />
+        <di:waypoint x="1222" y="550" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1qzv97y_di" bpmnElement="Flow_1qzv97y">
+        <di:waypoint x="1500" y="755" />
+        <di:waypoint x="1500" y="840" />
+        <di:waypoint x="1710" y="840" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1511" y="766.5" width="18" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_12" bpmnElement="Flow_12">
+        <di:waypoint x="2340" y="730" />
+        <di:waypoint x="2437" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_13" bpmnElement="Flow_13">
+        <di:waypoint x="2582" y="730" />
+        <di:waypoint x="2685" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_15" bpmnElement="Flow_15">
+        <di:waypoint x="2835" y="730" />
+        <di:waypoint x="2945" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_19" bpmnElement="Flow_19">
+        <di:waypoint x="3372" y="730" />
+        <di:waypoint x="3482" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_21" bpmnElement="Flow_21">
+        <di:waypoint x="3637" y="730" />
+        <di:waypoint x="3820" y="730" />
+        <di:waypoint x="3820" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_23" bpmnElement="Flow_23">
+        <di:waypoint x="3905" y="250" />
+        <di:waypoint x="4015" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_004qcqh_di" bpmnElement="Flow_004qcqh">
+        <di:waypoint x="4165" y="250" />
+        <di:waypoint x="4292" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DataInputAssociation_07evsv3_di" bpmnElement="DataInputAssociation_07evsv3">
+        <di:waypoint x="510" y="705" />
+        <di:waypoint x="510" y="730" />
+        <di:waypoint x="585" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DataInputAssociation_1mikg9a_di" bpmnElement="DataInputAssociation_1mikg9a">
+        <di:waypoint x="805" y="810" />
+        <di:waypoint x="870" y="810" />
+        <di:waypoint x="870" y="765" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DataOutputAssociation_10x3yzl_di" bpmnElement="DataOutputAssociation_10x3yzl">
+        <di:waypoint x="732" y="250" />
+        <di:waypoint x="800" y="250" />
+        <di:waypoint x="800" y="275" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DataOutputAssociation_1arrj3t_di" bpmnElement="DataOutputAssociation_1arrj3t">
+        <di:waypoint x="3350" y="775" />
+        <di:waypoint x="3350" y="820" />
+        <di:waypoint x="3405" y="820" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DataInputAssociation_1pow7fl_di" bpmnElement="DataInputAssociation_1pow7fl">
+        <di:waypoint x="3455" y="820" />
+        <di:waypoint x="3510" y="820" />
+        <di:waypoint x="3510" y="770" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
