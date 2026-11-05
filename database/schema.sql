@@ -1,0 +1,63 @@
+DROP TABLE IF EXISTS revenue_criteria_results CASCADE;
+DROP TABLE IF EXISTS esg_criteria CASCADE;
+DROP TABLE IF EXISTS companies CASCADE;
+DROP TABLE IF EXISTS revenue_streams CASCADE;
+
+
+
+CREATE TABLE "companies"(
+    "company_id" INTEGER NOT NULL,
+    "company_name" VARCHAR(255) NOT NULL,
+    "company_crn" VARCHAR(255) NOT NULL,
+    "sector" VARCHAR(255) NOT NULL,
+    "financial_year" INTEGER NOT NULL,
+    "filing_date" DATE NOT NULL,
+    "total_reported_revenue" NUMERIC NOT NULL,
+    "filing_doc_url" VARCHAR(255) NOT NULL,
+    "drive_file_id" VARCHAR(255) NOT NULL,
+    "drive_folder_id" VARCHAR(255) NOT NULL,
+    "extraction_status" VARCHAR(255) NOT NULL,
+    "created_at" TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL
+);
+ALTER TABLE
+    "companies" ADD PRIMARY KEY("company_id");
+CREATE TABLE "revenue_streams"(
+    "revenue_id" INTEGER NOT NULL,
+    "company_id" INTEGER NOT NULL,
+    "criteria_version" VARCHAR(255) NOT NULL,
+    "stream_name" VARCHAR(255) NOT NULL,
+    "stream_revenue" NUMERIC NOT NULL,
+    "revenue_share_pct" NUMERIC NOT NULL,
+    "created_at" TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL
+);
+ALTER TABLE
+    "revenue_streams" ADD PRIMARY KEY("revenue_id");
+CREATE TABLE "esg_criteria"(
+    "criteria_id" INTEGER NOT NULL,
+    "criteria_name" VARCHAR(255) NOT NULL,
+    "criteria_description" VARCHAR(255) NOT NULL,
+    "threshold" INTEGER NOT NULL,
+    "screening_type" VARCHAR(255) NOT NULL,
+    "created_at" TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL
+);
+ALTER TABLE
+    "esg_criteria" ADD PRIMARY KEY("criteria_id");
+CREATE TABLE "revenue_criteria_results"(
+    "result_id" INTEGER NOT NULL,
+    "revenue_id" INTEGER NOT NULL,
+    "criteria_id" INTEGER NOT NULL,
+    "result" VARCHAR(255) NOT NULL,
+    "result_justification" VARCHAR(255) NOT NULL,
+    "is_direct_involvement" BOOLEAN NOT NULL,
+    "direct_quote" VARCHAR(255) NOT NULL,
+    "page_ref" VARCHAR(255) NOT NULL,
+    "created_at" TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL
+);
+ALTER TABLE
+    "revenue_criteria_results" ADD PRIMARY KEY("result_id");
+ALTER TABLE
+    "revenue_streams" ADD CONSTRAINT "revenue_streams_company_id_foreign" FOREIGN KEY("company_id") REFERENCES "companies"("company_id");
+ALTER TABLE
+    "revenue_criteria_results" ADD CONSTRAINT "revenue_criteria_results_revenue_id_foreign" FOREIGN KEY("revenue_id") REFERENCES "revenue_streams"("revenue_id");
+ALTER TABLE
+    "revenue_criteria_results" ADD CONSTRAINT "revenue_criteria_results_criteria_id_foreign" FOREIGN KEY("criteria_id") REFERENCES "esg_criteria"("criteria_id");
