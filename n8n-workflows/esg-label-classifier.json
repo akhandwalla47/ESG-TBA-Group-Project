@@ -1,0 +1,200 @@
+{
+  "name": "esg-label-classifier",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE \"revenue_streams\"\nSET \"esg_label\" = '{{ $json.output.esg_label }}'\nWHERE \"revenue_id\" = {{ $json.output.revenue_id }};",
+        "options": {}
+      },
+      "id": "c2fbfab1-e73e-49d8-8476-28909e6de7fd",
+      "name": "Update Postgres Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1584,
+        176
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "nn2vj199s4mjr6GP",
+          "name": "Postgres account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"esg_label\": \"California\",\n    \"revenue_id\": \"Healthcare\"\n}"
+      },
+      "id": "500c92af-a217-4b75-b4a2-78299b5ab2e4",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1232,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "42e6b85a-aebe-4fb6-95c1-9a2b8e8a2c26",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "5VKuP0kzsOEUNMBn",
+          "name": "C26-openai-api-key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an ESG taxonomy classifier. Read the corporate revenue stream below and select ONE matching label strictly from the allowed list.\n\nAllowed Categories:\n- Renewable energy\n- Healthcare\n- Medical research\n- Fossil fuels\n- Tobacco\n- Gambling\n- Weapons & defense\n- Adult entertainment\n- Nuclear power\n- Alcohol\n- Clean technology\n- Sustainable water\n- Waste management\n- Sustainable agriculture\n- Green building\n- Affordable/Social Housing\n- Education and Training\n\n\n\n--- Revenue Stream Data ---\nStream Name: {{ $json.stream_name }}\nDisplay Name: {{ $json.display_name }}\nBusiness Activities: {{ $json.business_activities }}\nBusiness Description: {{ $json.business_description }}\nSupporting Evidence: {{ $json.supporting_evidence }}\n\nrevenue_id is {{ $json.revenue_id }}\nand you output the esg_label, if you do not find a fitting label then use \"NA\"",
+        "hasOutputParser": true
+      },
+      "id": "aaec1ba4-b472-48b5-8662-5425c775bf14",
+      "name": "Classify with LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        1088,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  \"revenue_id\",\n  \"stream_name\",\n  \"display_name\",\n  \"business_activities\",\n  \"business_description\",\n  \"supporting_evidence\"\nFROM \"revenue_streams\"\nWHERE \"company_id\" = {{ $json.company_id }};",
+        "options": {}
+      },
+      "id": "712513db-4e52-44e9-b0cc-d3ba958283d7",
+      "name": "Fetch Unlabeled Streams",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        176
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "nn2vj199s4mjr6GP",
+          "name": "Postgres account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "company_id",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        688,
+        176
+      ],
+      "id": "6cefb035-288e-44ed-b900-43ab8c386125",
+      "name": "When Executed by Another Workflow"
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "company_id": 10
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Classify with LLM",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify with LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify with LLM": {
+      "main": [
+        [
+          {
+            "node": "Update Postgres Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Unlabeled Streams": {
+      "main": [
+        [
+          {
+            "node": "Classify with LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Fetch Unlabeled Streams",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2522dec3-50c1-4895-92ef-9a1a0db7cb6d",
+  "meta": {
+    "instanceId": "0b3178866478233b39ccab85cc4a6c6bdfb86963810969ae561a567c52042c3a"
+  },
+  "nodeGroups": [],
+  "id": "mDVKd1LMczzUpZoo",
+  "tags": []
+}
