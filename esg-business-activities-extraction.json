@@ -1,0 +1,647 @@
+{
+  "name": "esg-business-activities-extraction",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "company_id",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        624,
+        80
+      ],
+      "id": "db398a5e-25c2-4dd8-ad3a-173bf8338b6a",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        1440,
+        80
+      ],
+      "id": "d2ae23f1-e753-4d5d-bd16-967adde43314",
+      "name": "Extract PDF Text from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.text || \"\";\n\nreturn [{\n  json: {\n    ...$json,\n    extracted_text: text,\n    usable_text: text.trim().length >= 500\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        80
+      ],
+      "id": "d3cd272f-7822-485b-b993-ff74b35d3d17",
+      "name": "Check Text Extraction Success"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "036a2225-f12c-4229-a2ed-7b7d22705d9e",
+              "leftValue": "={{ $json.usable_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1808,
+        80
+      ],
+      "id": "f2316d55-0ebf-4f48-8884-481747cb5ef6",
+      "name": "Is text usable?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    company_id,\n    company_name,\n    company_crn,\n    sector,\n    financial_year,\n    filing_date,\n    total_reported_revenue,\n    filing_doc_url,\n    drive_file_id,\n    drive_folder_id,\n    extraction_status\nFROM companies\nWHERE company_id = {{ $json.company_id }}\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        880,
+        80
+      ],
+      "id": "64dac44c-915a-42b1-a5e2-cd2534a48a1e",
+      "name": "Retrieve File Location",
+      "credentials": {
+        "postgres": {
+          "id": "UaVMen7JCP5Sk7OP",
+          "name": "Postgres account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.filing_doc_url }}",
+          "mode": "url"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1056,
+        80
+      ],
+      "id": "bc7277a8-68ac-4d5d-bf77-8387db01fc13",
+      "name": "Retrieve stored PDF",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "djPO56OjzFx5em5h",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n\nconst base64 = buffer.toString('base64');\n\nreturn [{\n  json: {\n    ...item.json,\n    pdf_base64: base64,\n    pdf_size: buffer.length,\n    base64_start: base64.substring(0, 10)\n  },\n  binary: item.binary\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        80
+      ],
+      "id": "875a9e5d-80bd-4842-8d93-79195fc8a984",
+      "name": "Prepare PDF for OCR"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO revenue_streams (\n    company_id,\n    stream_name,\n    reporting_year,\n    business_description,\n    supporting_evidence,\n    source_page,\n    display_name,\n    business_activities\n)\nVALUES (\n    $1, $2, $3, $4, $5, $6, $7, $8\n)\nRETURNING\n    revenue_id,\n    company_id,\n    stream_name,\n    display_name,\n    reporting_year,\n    business_description,\n    business_activities,\n    supporting_evidence,\n    source_page;",
+        "options": {
+          "queryReplacement": "=\n{{\n  [\n    $json.company_id,\n    $json.stream_name,\n    $json.reporting_year,\n    $json.business_description ?? null,\n    $json.supporting_evidence ?? null,\n    $json.source_page ?? null,\n    $json.display_name ?? null,\n    $json.business_activities ?? null\n  ]\n}}\n"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        2704,
+        80
+      ],
+      "id": "55d4d6dd-8ee7-4ac2-b4f9-da7f958beb63",
+      "name": "Insert Revenue Stream",
+      "credentials": {
+        "postgres": {
+          "id": "UaVMen7JCP5Sk7OP",
+          "name": "Postgres account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE companies\nSET\n    financial_year = COALESCE($1, financial_year),\n    extraction_status = 'completed',\n    last_extracted_at = NOW(),\n    extraction_error = NULL\nWHERE company_id = $2\nRETURNING\n    company_id,\n    company_name,\n    financial_year,\n    extraction_status,\n    last_extracted_at,\n    total_reported_revenue;",
+        "options": {
+          "queryReplacement": "={{\n  [\n    $('Parse & Validate Extraction').first().json.reporting_year,\n    $('Parse & Validate Extraction').first().json.company_id\n  ]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        2912,
+        80
+      ],
+      "id": "08e617df-4748-4c6f-837b-787e6fc191bb",
+      "name": "Update Company",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "UaVMen7JCP5Sk7OP",
+          "name": "Postgres account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst response = $input.first().json;\n\n// Extract the model's JSON response\nlet data = response;\n\nif (typeof response.text === 'string') {\n  data = JSON.parse(response.text);\n} else if (\n  response.output &&\n  typeof response.output === 'object' &&\n  !Array.isArray(response.output)\n) {\n  data = response.output;\n} else if (Array.isArray(response.output)) {\n  // Handle Responses API output format\n  const message = response.output.find(\n    item => item.type === 'message'\n  );\n\n  const rawText = message?.content?.find(\n    item => item.type === 'output_text'\n  )?.text;\n\n  if (!rawText) {\n    throw new Error('Gemini returned no extraction text.');\n  }\n\n  const cleaned = rawText\n    .replace(/```json/gi, '')\n    .replace(/```/g, '')\n    .trim();\n\n  try {\n    data = JSON.parse(cleaned);\n  } catch (error) {\n    throw new Error(\n      `Could not parse Gemini JSON: ${error.message}. Preview: ${cleaned.slice(0, 1000)}`\n    );\n  }\n}\n\n// Validate the business_segments array\nif (!Array.isArray(data.business_segments)) {\n  throw new Error(\n    'Missing or invalid business_segments array.'\n  );\n}\n\n// Retrieve original company and filing information\nconst request = $('When Executed by Another Workflow').first().json;\nconst filing = $('Retrieve File Location').first().json;\n\n// Validate and standardise each business segment\nconst segments = data.business_segments.map((segment, index) => {\n  if (\n    typeof segment.stream_name !== 'string' ||\n    !segment.stream_name.trim()\n  ) {\n    throw new Error(\n      `Business segment ${index + 1} has no valid stream_name.`\n    );\n  }\n\n  if (\n    segment.business_activities !== null &&\n    segment.business_activities !== undefined &&\n    typeof segment.business_activities !== 'string'\n  ) {\n    throw new Error(\n      `Business activities for ${segment.stream_name} must be a text string.`\n    );\n  }\n\n  return {\n    stream_name: segment.stream_name.trim(),\n\n    display_name:\n      typeof segment.display_name === 'string' &&\n      segment.display_name.trim()\n        ? segment.display_name.trim()\n        : segment.stream_name.trim(),\n\n    business_description:\n      segment.business_description ?? null,\n\n    business_activities:\n      segment.business_activities ?? null,\n\n    supporting_evidence:\n      segment.supporting_evidence ?? null,\n\n    source_page:\n  segment.source_page !== null &&\n  segment.source_page !== undefined\n    ? String(segment.source_page)\n    : null\n  };\n});\n\n// Return one structured extraction object\nreturn [{\n  json: {\n    company_id: request.company_id,\n    company_name: data.company_name || request.company_name,\n    company_crn: request.company_crn,\n    filing_id: filing.filing_id ?? request.filing_id ?? null,\n\n    reporting_year:\n      data.reporting_year || filing.financial_year,\n\n    extraction_method: 'business_segment_extraction',\n\n    business_segments: segments,\n\n    disclosure_gaps: Array.isArray(data.disclosure_gaps)\n      ? data.disclosure_gaps\n      : []\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2288,
+        80
+      ],
+      "id": "756b60be-712e-4e6c-993d-b0a61355dea6",
+      "name": "Parse & Validate Extraction"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst data = $input.first().json;\n\n// Read the business segments from Parse & Validate\nconst segments = data.business_segments || [];\n\nif (!segments.length) {\n  throw new Error(\n    'No business segments were identified. Check the Parse & Validate extraction output before inserting into PostgreSQL.'\n  );\n}\n\n// Create one database item per reported business segment\nreturn segments.map((segment, index) => {\n\n  if (\n    typeof segment.stream_name !== 'string' ||\n    !segment.stream_name.trim()\n  ) {\n    throw new Error(\n      `Business segment ${index + 1} is missing its name.`\n    );\n  }\n\n  return {\n    json: {\n      company_id: data.company_id,\n\n      company_name: data.company_name,\n\n      reporting_year: data.reporting_year,\n\n      stream_name: segment.stream_name.trim(),\n\n      display_name:\n        segment.display_name?.trim() ||\n        segment.stream_name.trim(),\n\n      business_description:\n        segment.business_description ?? null,\n\n      business_activities:\n        segment.business_activities ?? null,\n\n      supporting_evidence:\n        segment.supporting_evidence ?? null,\n\n      source_page:\n        segment.source_page ?? null\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        80
+      ],
+      "id": "698bfe7d-bbb7-4d52-aec0-4c5be8e1196e",
+      "name": "Flatten Revenue Streams"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE companies\nSET\n    extraction_status = 'processing',\n    extraction_error = NULL\nWHERE company_id = $1\nRETURNING company_id;",
+        "options": {
+          "queryReplacement": "={{\n  [\n    $json.company_id\n  ]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        880,
+        288
+      ],
+      "id": "c0a0523c-f121-4ce3-95d9-c82c8c4516fb",
+      "name": "Mark Company Processing",
+      "credentials": {
+        "postgres": {
+          "id": "UaVMen7JCP5Sk7OP",
+          "name": "Postgres account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Prepare File for Extraction\n\nRetrieves the company's stored annual report PDF from Google Drive using its database file reference. Converts the PDF into a format suitable for text extraction and checks whether sufficient readable text is available.",
+        "height": 192,
+        "width": 256,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1168,
+        288
+      ],
+      "typeVersion": 1,
+      "id": "e06b4e35-1796-46e0-b57b-09efbe21f668",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "OCR Processing\n\nExtracts relevant pages from the annual report, processes them through OCR to capture text from PDF pages (including scanned content), and prepares the extracted content as structured input for the AI extraction stage.",
+        "height": 176,
+        "width": 288,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1952,
+        432
+      ],
+      "typeVersion": 1,
+      "id": "adee795f-ab19-4a1d-bbf2-fb2ceb91f2d1",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "LLM Processing – Text-Based Documents\n\nSends readable PDF text to Gemini to identify reported revenue streams, business segments and underlying business activities. Extracts descriptions, financial figures and supporting evidence, following a structured output format.",
+        "height": 192,
+        "width": 288,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1952,
+        -256
+      ],
+      "typeVersion": 1,
+      "id": "a7969ebe-7307-40cf-b82c-a2648227d7a4",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Parsing & Uploading to Database\n\nParses and validates the AI response, standardises extracted fields and separates individual business segments into database records. Uploads the results to PostgreSQL and updates the company's extraction status.",
+        "height": 176,
+        "width": 288,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2528,
+        288
+      ],
+      "typeVersion": 1,
+      "id": "7cb9b852-fd3d-4dc9-b68e-606a15d6891a",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "u6ALaS1eaKmJ1il9",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "filing_doc_url": "={{ $('Retrieve File Location').item.json.filing_doc_url }}",
+            "Retrieve_stored_PDF_filing_doc_url": "={{ $('Retrieve stored PDF').item.json.filing_doc_url }}",
+            "_firstItem": "={{ $('When Executed by Another Workflow').first().json }}",
+            "Retrieve_File_Location__firstItem": "={{ $('Retrieve File Location').first().json }}"
+          },
+          "matchingColumns": [
+            "filing_doc_url",
+            "Retrieve_stored_PDF_filing_doc_url",
+            "_firstItem",
+            "Retrieve_File_Location__firstItem"
+          ],
+          "schema": [
+            {
+              "id": "filing_doc_url",
+              "displayName": "filing_doc_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Retrieve_stored_PDF_filing_doc_url",
+              "displayName": "Retrieve_stored_PDF_filing_doc_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "_firstItem",
+              "displayName": "_firstItem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Retrieve_File_Location__firstItem",
+              "displayName": "Retrieve_File_Location__firstItem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        2048,
+        208
+      ],
+      "name": "Call esg-OCR-processing-subworkflow",
+      "id": "d4dc0615-34a9-4c5a-bf38-7c2fb7bc54ae"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "i3MGryxFIimT3wmj",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "_firstItem": "={{ $('When Executed by Another Workflow').first().json }}",
+            "Retrieve_File_Location__firstItem": "={{ $('Retrieve File Location').first().json }}",
+            "extracted_text": "={{ $json.extracted_text }}",
+            "text": "={{ $json.text }}"
+          },
+          "matchingColumns": [
+            "_firstItem",
+            "Retrieve_File_Location__firstItem",
+            "extracted_text",
+            "text"
+          ],
+          "schema": [
+            {
+              "id": "_firstItem",
+              "displayName": "_firstItem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Retrieve_File_Location__firstItem",
+              "displayName": "Retrieve_File_Location__firstItem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "extracted_text",
+              "displayName": "extracted_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        2048,
+        -48
+      ],
+      "name": "Call esg-text-based-LLM-processing-subworkflow",
+      "id": "c392b252-ec5f-4327-b2ad-c6a8f2854c74"
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "company_id": 2
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Retrieve File Location",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Company Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text from File": {
+      "main": [
+        [
+          {
+            "node": "Check Text Extraction Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Text Extraction Success": {
+      "main": [
+        [
+          {
+            "node": "Is text usable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is text usable?": {
+      "main": [
+        [
+          {
+            "node": "Call esg-text-based-LLM-processing-subworkflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call esg-OCR-processing-subworkflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve File Location": {
+      "main": [
+        [
+          {
+            "node": "Retrieve stored PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve stored PDF": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF for OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF for OCR": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Revenue Stream": {
+      "main": [
+        [
+          {
+            "node": "Update Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Validate Extraction": {
+      "main": [
+        [
+          {
+            "node": "Flatten Revenue Streams",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten Revenue Streams": {
+      "main": [
+        [
+          {
+            "node": "Insert Revenue Stream",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call esg-OCR-processing-subworkflow": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call esg-text-based-LLM-processing-subworkflow": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "any",
+    "availableInMCP": false,
+    "errorWorkflow": "9D1sVQeIuKETC0qG"
+  },
+  "versionId": "4eaf06f7-bd7f-482d-8262-be89a179368d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b3178866478233b39ccab85cc4a6c6bdfb86963810969ae561a567c52042c3a"
+  },
+  "nodeGroups": [
+    {
+      "id": "6f9b13d2-5385-45c8-8ba6-bdae437a622b",
+      "name": "Parising & Upload to Database",
+      "nodeIds": [
+        "55d4d6dd-8ee7-4ac2-b4f9-da7f958beb63",
+        "08e617df-4748-4c6f-837b-787e6fc191bb",
+        "756b60be-712e-4e6c-993d-b0a61355dea6",
+        "698bfe7d-bbb7-4d52-aec0-4c5be8e1196e"
+      ]
+    },
+    {
+      "id": "fdc56731-1201-4959-b267-d45b6267d6fd",
+      "name": "Prepare File for Extraction",
+      "nodeIds": [
+        "d2ae23f1-e753-4d5d-bd16-967adde43314",
+        "d3cd272f-7822-485b-b993-ff74b35d3d17",
+        "64dac44c-915a-42b1-a5e2-cd2534a48a1e",
+        "bc7277a8-68ac-4d5d-bf77-8387db01fc13",
+        "875a9e5d-80bd-4842-8d93-79195fc8a984"
+      ]
+    }
+  ],
+  "id": "d1VMo1DgIn2lFXdx",
+  "tags": []
+}

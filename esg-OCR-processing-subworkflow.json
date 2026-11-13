@@ -1,0 +1,543 @@
+{
+  "name": "esg-OCR-processing-subworkflow",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "\nconst response = $input.first().json;\n\n// ============================================\n// 1. EXTRACT GEMINI RESPONSE TEXT\n// ============================================\n\nlet data = response;\n\nif (typeof response.text === 'string') {\n  data = JSON.parse(response.text);\n\n} else if (Array.isArray(response.output)) {\n\n  const message = response.output.find(\n    item => item.type === 'message'\n  );\n\n  const rawText = message?.content?.find(\n    item => item.type === 'output_text'\n  )?.text;\n\n  if (!rawText) {\n    throw new Error('Gemini returned no contents-page extraction text.');\n  }\n\n  const cleaned = rawText\n    .replace(/```json/gi, '')\n    .replace(/```/g, '')\n    .trim();\n\n  try {\n    data = JSON.parse(cleaned);\n  } catch (error) {\n    throw new Error(\n      `Could not parse Gemini JSON: ${error.message}. Preview: ${cleaned.slice(0, 1500)}`\n    );\n  }\n\n} else if (\n  response.output &&\n  typeof response.output === 'object' &&\n  !Array.isArray(response.output)\n) {\n  data = response.output;\n}\n\n// ============================================\n// 2. NORMALISE THE GEMINI RESPONSE\n// ============================================\n\nfunction getFirstDefined(object, keys) {\n  if (!object || typeof object !== 'object') {\n    return undefined;\n  }\n\n  for (const key of keys) {\n    if (\n      object[key] !== undefined &&\n      object[key] !== null &&\n      object[key] !== ''\n    ) {\n      return object[key];\n    }\n  }\n\n  return undefined;\n}\n\n// Accept different possible page-number field names.\nfunction getPdfPage(section) {\n  const value = getFirstDefined(section, [\n    'pdf_page_number',\n    'physical_page_number',\n    'calculated_pdf_page',\n    'pdf_page',\n    'page_number',\n    'page',\n    'start_page'\n  ]);\n\n  if (value === undefined) {\n    return null;\n  }\n\n  const page = Number(value);\n\n  return Number.isInteger(page) && page > 0\n    ? page\n    : null;\n}\n\n// Accept different possible heading field names.\nfunction getSectionName(section) {\n  const value = getFirstDefined(section, [\n    'section_name',\n    'heading',\n    'title',\n    'name'\n  ]);\n\n  return typeof value === 'string'\n    ? value.trim()\n    : '';\n}\n\n// Convert section arrays into a consistent structure.\nfunction normaliseSections(input) {\n  if (!Array.isArray(input)) {\n    return [];\n  }\n\n  return input.map(section => {\n    if (\n      typeof section === 'string' ||\n      typeof section === 'number'\n    ) {\n      return null;\n    }\n\n    if (!section || typeof section !== 'object') {\n      return null;\n    }\n\n    return {\n      section_name: getSectionName(section),\n\n      printed_page_number: getFirstDefined(section, [\n        'printed_page_number',\n        'printed_page',\n        'printed_page_no'\n      ]) ?? null,\n\n      pdf_page_number: getPdfPage(section)\n    };\n  }).filter(section =>\n    section &&\n    section.section_name &&\n    section.pdf_page_number !== null\n  );\n}\n\n// ============================================\n// 3. GET ALL CONTENTS ENTRIES\n// ============================================\n\n// These entries are used to calculate section boundaries.\n\nconst allContentsInput = getFirstDefined(data, [\n  'all_contents_entries',\n  'allContentsEntries',\n  'All_Contents_Entries',\n  'contents_entries',\n  'Contents_Entries'\n]);\n\nlet allSections = normaliseSections(allContentsInput);\n\n// Fallback: if Gemini returns a raw array, use it as the\n// contents entries. Also supports older response formats.\n\nif (allSections.length === 0 && Array.isArray(data)) {\n  allSections = normaliseSections(data);\n}\n\nif (allSections.length === 0) {\n  const fallbackInput = getFirstDefined(data, [\n    'relevant_sections',\n    'Relevant_Sections',\n    'relevantSections'\n  ]);\n\n  allSections = normaliseSections(fallbackInput);\n}\n\n// ============================================\n// 4. GET RELEVANT SECTIONS\n// ============================================\n\n// These entries determine which sections we actually extract.\n\nconst relevantInput = getFirstDefined(data, [\n  'relevant_sections',\n  'Relevant_Sections',\n  'relevantSections'\n]);\n\nlet relevantSections = normaliseSections(relevantInput);\n\n// If Gemini did not return a separate relevant_sections array,\n// use targeted keyword matching as a fallback.\n\nif (relevantSections.length === 0) {\n\n  const relevantKeywords = [\n  'at a glance',                 \n  'business model',             \n  'business review',\n  'operational review',\n  'operational reviews',\n  'operating review',\n  'strategic and operating review',\n  'business segments',\n  'segment discussion',\n  'segment review',\n  'our divisions',\n  'divisional review',\n  'principal activities',\n  'business unit',\n    'sustainability',              \n  'esg',                         \n  'non-financial',               \n  'nfsis',                       \n  'responsible business', \n  'TCFD', \n  'climate',                    \n  'people and planet',          \n  'energy transition',         \n  'greenhouse gas',\n  ];\n\n  relevantSections = allSections.filter(section => {\n    const heading = section.section_name.toLowerCase();\n\n    return relevantKeywords.some(keyword =>\n      heading.includes(keyword)\n    );\n  });\n}\n\n// ============================================\n// 5. VALIDATE CONTENTS ENTRIES\n// ============================================\n\nif (allSections.length === 0) {\n  throw new Error(\n    'No valid contents-page entries found. Check Gemini output for all_contents_entries and physical PDF page numbers.'\n  );\n}\n\nif (relevantSections.length === 0) {\n  throw new Error(\n    'No relevant business sections were identified by Gemini or the fallback keyword filter.'\n  );\n}\n\n// Sort all contents entries by physical PDF page number.\nallSections.sort((a, b) =>\n  a.pdf_page_number - b.pdf_page_number\n);\n\n// Remove duplicate headings at the same physical page.\nallSections = allSections.filter((section, index, array) =>\n  index === 0 ||\n  section.pdf_page_number !== array[index - 1].pdf_page_number ||\n  section.section_name !== array[index - 1].section_name\n);\n\n// Sort selected sections.\nrelevantSections.sort((a, b) =>\n  a.pdf_page_number - b.pdf_page_number\n);\n\n// ============================================\n// 6. DETERMINE TOTAL PDF PAGE COUNT\n// ============================================\n\nconst totalPdfPagesValue = getFirstDefined(data, [\n  'total_pdf_pages',\n  'pdf_page_count',\n  'total_pages'\n]);\n\nconst totalPdfPages = Number(totalPdfPagesValue);\n\nconst validTotalPdfPages =\n  Number.isInteger(totalPdfPages) && totalPdfPages > 0\n    ? totalPdfPages\n    : null;\n\n// ============================================\n// 7. CALCULATE SECTION PAGE RANGES\n// ============================================\n\nconst selectedSections = [];\nconst allRelevantPages = [];\nconst boundaryWarnings = [];\n\nfor (const section of relevantSections) {\n\n  const startPage = section.pdf_page_number;\n\n  // Find the next heading in the COMPLETE contents list.\n  // This is why all_contents_entries is important.\n\n  const nextSection = allSections.find(entry =>\n    entry.pdf_page_number > startPage\n  );\n\n  let endPage = null;\n\n  if (nextSection) {\n\n    // Stop immediately before the next contents heading.\n    endPage = nextSection.pdf_page_number - 1;\n\n  } else if (validTotalPdfPages) {\n\n    // Use actual PDF page count if available.\n    endPage = validTotalPdfPages;\n\n  } else {\n\n    // Do not guess the ending page.\n    // Only select the known starting page.\n    endPage = startPage;\n\n    boundaryWarnings.push(\n      `Could not determine the ending page for \"${section.section_name}\". Only page ${startPage} was selected because no following contents heading or PDF page count was available.`\n    );\n  }\n\n  if (endPage < startPage) {\n    boundaryWarnings.push(\n      `Invalid page range for \"${section.section_name}\".`\n    );\n    continue;\n  }\n\n  const pages = [];\n\n  for (let page = startPage; page <= endPage; page++) {\n    pages.push(page);\n    allRelevantPages.push(page);\n  }\n\n  selectedSections.push({\n    section_name: section.section_name,\n    printed_page_number: section.printed_page_number,\n    start_page: startPage,\n    end_page: endPage,\n    page_count: pages.length,\n    pages: pages\n  });\n}\n\n// ============================================\n// 8. REMOVE DUPLICATE PAGES\n// ============================================\n\nconst relevantPages = [\n  ...new Set(allRelevantPages)\n].sort((a, b) => a - b);\n\nif (relevantPages.length === 0) {\n  throw new Error(\n    'No physical PDF pages were selected for extraction.'\n  );\n}\n\n// ============================================\n// 9. IDENTIFY CONTENTS PAGE NUMBER\n// ============================================\n\nconst contentsPageValue = getFirstDefined(data, [\n  'table_of_contents_page',\n  'contents_page_number',\n  'table_of_contents_page_number',\n  'contents_page'\n]);\n\nconst contentsPageNumber = Number(contentsPageValue);\n\nconst validContentsPage =\n  Number.isInteger(contentsPageNumber) &&\n  contentsPageNumber > 0\n    ? contentsPageNumber\n    : null;\n\n// ============================================\n// 10. RETURN RESULTS\n// ============================================\n\nreturn [{\n  json: {\n    contents_page_number: validContentsPage,\n\n    contents_complete:\n      data.contents_complete ?? null,\n\n    total_contents_headings: allSections.length,\n\n    total_relevant_sections: selectedSections.length,\n\n    starting_pages: selectedSections.map(section =>\n      section.start_page\n    ),\n\n    selected_sections: selectedSections,\n\n    relevant_pages: relevantPages,\n\n    total_pages_selected: relevantPages.length,\n\n    total_pdf_pages: validTotalPdfPages,\n\n    boundary_warnings: boundaryWarnings\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        560
+      ],
+      "id": "24b7f494-78ec-4d16-8131-7c24a995ced2",
+      "name": "Parse Relevant Pages"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/responses",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": []
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=\n{{ JSON.stringify({\n  model: \"google/gemini-3.1-flash-lite\",\n  max_output_tokens: 12000,\n  input: [\n    {\n      role: \"user\",\n      content: [\n        {\n          type: \"input_file\",\n          file_url: $json.body[0]\n        },\n        {\n          type: \"input_text\",\n          text: `You are analysing the first five physical PDF pages of a company's annual report.\n\nYOUR TASK:\nIdentify the table of contents and extract its section headings and page references. The purpose is to help a later workflow select the correct pages containing information about the company's business activities and operating segments.\n\nIMPORTANT PAGE NUMBER RULES:\n1. Return physical PDF page numbers, meaning the actual page position in the original complete PDF, starting with page 1.\n2. Do not confuse printed report page numbers with physical PDF page numbers.\n3. Use the relationship between the visible printed page numbers and their positions in the supplied PDF to calculate the physical PDF page numbers.\n4. Do not add a page offset twice.\n5. If you cannot confidently determine a physical PDF page number, do not guess. Use null for that entry's pdf_page_number.\n6. Keep the printed page number separately where visible.\n\nOUTPUT REQUIREMENTS:\n\nReturn ONE JSON object with exactly these four top-level properties:\n\n{\n  \"table_of_contents_page\": 2,\n  \"contents_complete\": true,\n  \"all_contents_entries\": [],\n  \"relevant_sections\": []\n}\n\nPROPERTY 1: table_of_contents_page\nThe physical PDF page number containing the table of contents. Use null if it cannot be identified.\n\nPROPERTY 2: contents_complete\nReturn true only if the complete contents list is visible in the supplied pages. If the contents clearly continues beyond the supplied pages, return false.\n\nPROPERTY 3: all_contents_entries\nReturn EVERY heading and subheading visible in the contents page(s), not just relevant ones.\n\nEach entry must have this structure:\n{\n  \"section_name\": \"Exact heading from the contents page\",\n  \"printed_page_number\": 12,\n  \"pdf_page_number\": 14\n}\n\nRules:\n- Preserve the heading wording as printed.\n- Include all visible headings, including unrelated sections.\n- Include nested headings and subsections where they have their own page references.\n- Sort entries in ascending physical PDF page order.\n- Do not create headings that are not visible in the contents.\n- Use null if a printed page number or physical PDF page number cannot be established.\n\nPROPERTY 4: relevant_sections\nSelect relevant entries from all_contents_entries that are likely to contain useful information about the company's business activities, operating divisions, products, services, business model or segment structure.\n\nInclude headings relating to:\n- Business or operating segments\n- Business divisions and operating groups\n- Products and services\n- Business activities and principal activities\n- Business model\n- Segment reviews and divisional reviews\n- Group or operating performance reviews\n- Revenue, turnover or sales breakdowns\n- Segmental analysis in financial statement notes\n- Descriptions of individual operating businesses\n\nDo not select generic sections solely because they contain words such as \"financial\", \"report\", \"governance\" or \"sustainability\".\n\nEach relevant_sections entry MUST be copied from all_contents_entries with the same:\n- section_name\n- printed_page_number\n- pdf_page_number\n\nDo not invent or change page numbers.\n\nIMPORTANT:\n- Do not extract or estimate revenue amounts.\n- Do not classify the company against ESG criteria.\n- Do not summarise the annual report.\n- This task is only to identify contents headings and their page references.\n\nIf no contents page can be identified, return:\n{\n  \"table_of_contents_page\": null,\n  \"contents_complete\": false,\n  \"all_contents_entries\": [],\n  \"relevant_sections\": []\n}\n\nReturn valid JSON only. Do not include Markdown, code fences, explanations or text outside the JSON object.`\n        }\n      ]\n    }\n  ]\n}) }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2320,
+        560
+      ],
+      "id": "44d3475f-950b-491a-b40e-b391a67cf33c",
+      "name": "Identify Relevant Sections",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "foKKc6uKKzNqNBsO",
+          "name": "OpenRouter Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "Merge PDF",
+        "url": [
+          "={{ $json.body.join(',') }}"
+        ],
+        "advancedOptions": {}
+      },
+      "type": "n8n-nodes-pdfco.PDFco Api",
+      "typeVersion": 1.1,
+      "position": [
+        2816,
+        560
+      ],
+      "id": "8611eb97-6f26-44b8-ac09-68a65a930a85",
+      "name": "PDFco API",
+      "credentials": {
+        "pdfcoApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/responses",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": []
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=\n{{\n(() => {\n  const pageMapping = $json.input_type === \"pdf\"\n    ? ($json.pageMapping || \"Page mapping unavailable.\")\n    : \"The input is extracted text. Use only original PDF page numbers explicitly available in the supplied text. Do not invent page numbers.\";\n\n  const prompt = `\n### Business Segment and Activity Extraction Instructions\n\nYour task is to identify the company's reported business segments and extract detailed information about the activities, products and services associated with each segment.\n\nThe objective is to provide users with a comprehensive and understandable overview of what the company does, allowing them to decide which business segments are relevant to their own investment interests and ESG criteria.\n\nDo not perform ESG screening, assign ESG classifications or attempt to calculate revenue attributable to individual activities.\n\n### 1. Identify reported business segments\n\n- Identify all separately reported operating segments, divisions and business lines disclosed in the annual report.\n- Prioritise the consolidated financial statements, segment reporting notes, business reviews and descriptions of operating activities.\n- Preserve the exact segment names used in the annual report in stream_name.\n- Create a descriptive and understandable display_name that explains the nature of the segment's business.\n- Avoid vague or unexplained internal segment names where a clearer description can be provided.\n- Do not rename segments using ESG categories or investment classifications.\n- Create one record per reported segment.\n- Do not create separate records for individual products, activities, subsidiaries or operational processes.\n- Do not create duplicate records for the same segment.\n\n### 2. Create descriptive display names\n\nThe display_name should help a user understand the segment without needing to know the company's internal terminology.\n\nExamples:\n- Integrated Gas → Natural gas and LNG operations\n- Upstream → Oil and gas exploration and production\n- Marketing → Fuel retail, mobility and energy marketing\n- Chemicals and Products → Oil refining and chemical manufacturing\n- Renewables and Energy Solutions → Renewable energy and low-carbon solutions\n\nThese are examples of descriptive naming, not mandatory classifications.\n\nKeep the original reported segment name in stream_name.\n\n### 3. Extract business descriptions\n\n- Provide a clear, detailed description of what the segment does.\n- Explain the main products, services, operations and markets associated with the segment.\n- Include relevant information from different sections of the annual report where available.\n- Describe the actual business activities rather than simply repeating the segment name.\n- Avoid generic descriptions such as \"energy operations\", \"commercial activities\" or \"other business activities\".\n- Do not infer activities from company names, subsidiary names or unsupported assumptions.\n- If the report provides limited information, clearly state the limitations rather than inventing details.\n\n### 4. Compile business activities\n\nThe business_activities field must contain one consolidated text description for each reported segment.\n\n- Include all identifiable business activities associated with the segment.\n- Include specific products, services, technologies, operations and markets wherever disclosed.\n- Separate distinct activities using semicolons or clear sentences.\n- Include both conventional and emerging business activities where reported.\n- Where relevant, describe activities that may be associated with different industries or ESG topics without assigning them to an ESG category.\n- Do not omit smaller activities simply because they are not the segment's primary business.\n- Do not create separate database records for individual activities.\n- Do not imply that each activity generates separately disclosed revenue.\n\nFor example, a segment called \"Renewables and Energy Solutions\" might have the following business activities:\n\n\"Wind and solar electricity generation; battery energy storage; hydrogen production; carbon capture and storage; energy trading and optimisation; power and pipeline gas marketing.\"\n\nA segment called \"Marketing\" might include:\n\n\"Retail petrol stations; electric vehicle charging; lubricants; biofuels; bitumen; aviation fuels; marine fuels; energy marketing and trading.\"\n\nThese descriptions are illustrative. Only include activities supported by the annual report.\n\n\n### 5. Supporting evidence and source pages\n\n- Provide evidence supporting the reported segment name, display name and business description.\n- Explain which disclosures support the identified activities.\n- Use the company's annual report as the primary source.\n- Identify ALL original physical PDF pages that contain relevant information about the segment and its business activities.\n- Include pages defining the segment, segment reporting breakdowns and detailed business reviews where relevant.\n- If relevant information appears across multiple pages, include every relevant page number rather than only the first page.\n- Use page ranges for consecutive pages, for example \"30-36\".\n- Use comma-separated page numbers and ranges for non-consecutive pages, for example \"11, 21, 30-36\".\n- The source_page field must contain a text string listing the relevant original PDF pages.\n- The supporting_evidence field should explain what information is disclosed on those pages.\n- Ensure the pages listed in source_page correspond to the evidence described in supporting_evidence.\n- Do not include pages that are unrelated to the segment.\n- Do not invent page numbers or supporting evidence.\n- Always use ORIGINAL physical PDF page numbers, not merged PDF page numbers.\n- If page numbers cannot be established, use null.\n\n\n### 6. Revenue and financial information restrictions\n\n- Do not attempt to calculate revenue attributable to individual business activities.\n- Do not estimate how much of a segment's revenue comes from a particular product, service or operation.\n- Do not allocate consolidated company revenue across segments.\n- Do not treat operational measures, production volumes, sales volumes or capacity as monetary revenue.\n- Do not use segment profit, adjusted earnings or EBITDA as substitutes for revenue.\n- The purpose of this extraction is to describe the company's business activities, not to calculate ESG exposure.\n\n### 7. General restrictions\n\n- Extract information relating to the latest reporting year only.\n- Do not include prior-year comparative information.\n- Preserve uncertainty and identify missing disclosures.\n- Do not make ESG classifications or screening decisions.\n- Do not determine whether an activity is positive, negative or aligned with any investment criterion.\n- Do not force activities into predefined ESG categories.\n- Provide as much relevant and supported business information as the annual report allows.\n\n### 8. Required JSON output\n\nReturn valid JSON only, without Markdown code fences or explanatory text outside the JSON.\n\nUse the following structure:\n\n{\n  \"company_name\": \"Company name\",\n  \"reporting_year\": \"2025\",\n  \"business_segments\": [\n    {\n      \"stream_name\": \"Original reported segment name\",\n      \"display_name\": \"Clear descriptive segment name\",\n      \"business_description\": \"Overall description of the segment\",\n      \"business_activities\": \"All identified activities compiled into one text field\",\n      \"supporting_evidence\": \"Evidence supporting the segment and its activities\",\n      \"source_page\": \"11, 21, 30-36\"\n    }\n  ],\n  \"disclosure_gaps\": [\n    \"Description of any relevant missing or unavailable information\"\n  ]\n}\n\nUse null for unavailable page numbers. Do not invent information to complete the JSON structure.\n`;\n\n  return JSON.stringify({\n    model: \"google/gemini-3.1-flash-lite\",\n    max_output_tokens: 25000,\n    input: [\n      {\n        role: \"user\",\n        content: [\n          ...(\n            $json.input_type === \"pdf\"\n              ? [{\n                  type: \"input_file\",\n                  filename: \"selected_pages.pdf\",\n                  file_url: $json.file_url\n                }]\n              : [{\n                  type: \"input_text\",\n                  text: \"ANNUAL REPORT TEXT:\\n\" + $json.extracted_text\n                }]\n          ),\n          {\n            type: \"input_text\",\n            text: \"IMPORTANT PAGE NUMBER MAPPING:\\n\" +\n              pageMapping +\n              \"\\n\\nUse the ORIGINAL PDF page numbers in all source_page fields. Do not use merged PDF page numbers.\"\n          },\n          {\n            type: \"input_text\",\n            text: prompt\n          }\n        ]\n      }\n    ]\n  });\n})()\n}}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3136,
+        560
+      ],
+      "id": "4a43018d-cb08-4bd8-8d27-0a612e211530",
+      "name": "Revenue Extraction",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "foKKc6uKKzNqNBsO",
+          "name": "OpenRouter Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "filing_doc_url",
+              "type": "any"
+            },
+            {
+              "name": "Retrieve_stored_PDF_filing_doc_url",
+              "type": "any"
+            },
+            {
+              "name": "_firstItem",
+              "type": "any"
+            },
+            {
+              "name": "Retrieve_File_Location__firstItem",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "id": "c0bad509-a4c9-4561-a11f-3fa5e4833e19",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        1808,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "source": "googleSheets",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1Hg8O1mNWnmAGEt67eEaf0qmrOfygkdKR0lhxUo-SUhg/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1616390106,
+          "mode": "list",
+          "cachedResultName": "Evaluation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hg8O1mNWnmAGEt67eEaf0qmrOfygkdKR0lhxUo-SUhg/edit#gid=1616390106"
+        }
+      },
+      "type": "n8n-nodes-base.evaluationTrigger",
+      "typeVersion": 4.7,
+      "position": [
+        1808,
+        448
+      ],
+      "id": "35f5d518-2455-4de4-8ddd-d6e250c32a8c",
+      "name": "Evaluation Trigger",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "boSeSJDEM29hEn0W",
+          "name": "Google Sheets account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const isEval = $('Evaluation Trigger').isExecuted;\nconst input = isEval ? $('Evaluation Trigger').first().json : $('Start').first().json;\n\nconst parseIfNeeded = (val) => {\n  if (typeof val === 'string' && val.trim().startsWith('{')) {\n    try { return JSON.parse(val); } catch (e) { return val; }\n  }\n  return val;\n};\n\nreturn [{\n  json: {\n    filing_doc_url: input.filing_doc_url,\n    Retrieve_stored_PDF_filing_doc_url: input.Retrieve_stored_PDF_filing_doc_url,\n    _firstItem: parseIfNeeded(input._firstItem),\n    Retrieve_File_Location__firstItem: parseIfNeeded(input.Retrieve_File_Location__firstItem),\n    expected_segments: input.expected_segments || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        560
+      ],
+      "id": "4ce4525f-6ed2-4aee-99e9-0b218739c2fd",
+      "name": "Normalize Inputs"
+    },
+    {
+      "parameters": {
+        "operation": "Split PDF",
+        "url": "={{ $('Normalize Inputs').item.json.filing_doc_url }}",
+        "pages": "1-5",
+        "advancedOptionsPageNumber": {}
+      },
+      "type": "n8n-nodes-pdfco.PDFco Api",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        560
+      ],
+      "id": "6c3ab77d-1616-415c-8008-0ee14faa250b",
+      "name": "Extract First 5 Pages",
+      "credentials": {
+        "pdfcoApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "Split PDF",
+        "url": "={{ $('Normalize Inputs').item.json.Retrieve_stored_PDF_filing_doc_url }}",
+        "pages": "={{ $json.relevant_pages.join(',') }}",
+        "advancedOptionsPageNumber": {}
+      },
+      "type": "n8n-nodes-pdfco.PDFco Api",
+      "typeVersion": 1.1,
+      "position": [
+        2656,
+        560
+      ],
+      "id": "7dec2382-8ecb-4cff-a0e6-8b0249a7b6d1",
+      "name": "Extract Identified Pages",
+      "credentials": {
+        "pdfcoApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $('Normalize Inputs').first().json._firstItem || {};\nconst filing = $('Normalize Inputs').first().json.Retrieve_File_Location__firstItem || {};\n\nconst pageData = $('Parse Relevant Pages').first().json;\nconst relevantPages = pageData.relevant_pages;\n\nconst pageMapping = relevantPages\n  .map((originalPage, index) =>\n    `Merged PDF page ${index + 1} = Original PDF page ${originalPage}`\n  )\n  .join('\\n');\n\nreturn [{\n  json: {\n    company_id: request.company_id,\n    company_name: request.company_name,\n    company_crn: request.company_crn,\n    filing_id: filing.filing_id,\n    financial_year: filing.financial_year,\n    input_type: 'pdf',\n    extracted_text: null,\n    file_url: $json.url,\n    relevant_pages: relevantPages,\n    pageMapping: pageMapping,\n    extraction_method: 'pdfco_selected_pages'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        560
+      ],
+      "id": "87469e3a-e840-470e-bfc6-3a333ac58d19",
+      "name": "Prepare PDF Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst pageData = $('Parse Relevant Pages').first().json;\nconst evalRow = $('Normalize Inputs').first().json;\n\nlet extracted = response;\nif (Array.isArray(response.output)) {\n  const message = response.output.find(item => item.type === 'message');\n  const rawText = message?.content?.find(item => item.type === 'output_text')?.text || '';\n  const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();\n  try {\n    extracted = JSON.parse(cleaned);\n  } catch (e) {\n    return [{\n      json: {\n        valid_json: 0,\n        segment_count: 0,\n        page_citation_accuracy: 0,\n        has_boundary_warnings: (pageData.boundary_warnings?.length || 0) > 0 ? 1 : 0,\n        parse_error: e.message,\n        extracted: null,\n        expected_segments: evalRow.expected_segments || ''\n      }\n    }];\n  }\n}\n\nconst segments = Array.isArray(extracted.business_segments) ? extracted.business_segments : [];\nconst allowedPages = new Set(pageData.relevant_pages || []);\n\nfunction expandPages(pageStr) {\n  if (!pageStr || typeof pageStr !== 'string') return [];\n  const pages = [];\n  for (const part of pageStr.split(',')) {\n    const trimmed = part.trim();\n    if (trimmed.includes('-')) {\n      const [start, end] = trimmed.split('-').map(Number);\n      if (Number.isInteger(start) && Number.isInteger(end) && end >= start) {\n        for (let p = start; p <= end; p++) pages.push(p);\n      }\n    } else {\n      const num = Number(trimmed);\n      if (Number.isInteger(num)) pages.push(num);\n    }\n  }\n  return pages;\n}\n\nlet validCitations = 0;\nfor (const seg of segments) {\n  const cited = expandPages(seg.source_page);\n  const allInBounds = cited.length > 0 && cited.every(p => allowedPages.has(p));\n  if (allInBounds) validCitations++;\n}\n\nconst pageCitationAccuracy = segments.length > 0 ? Number((validCitations / segments.length).toFixed(2)) : 0;\n\nreturn [{\n  json: {\n    valid_json: 1,\n    segment_count: segments.length,\n    page_citation_accuracy: pageCitationAccuracy,\n    total_pages_selected: pageData.total_pages_selected || 0,\n    has_boundary_warnings: (pageData.boundary_warnings?.length || 0) > 0 ? 1 : 0,\n    extracted,\n    expected_segments: evalRow.expected_segments || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3296,
+        560
+      ],
+      "id": "62e6794d-77cc-411e-9ee5-e0ec2923033a",
+      "name": "Evaluate Extraction Structure & Citations"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/responses",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"google/gemini-3.1-flash-lite\",\n  max_output_tokens: 1000,\n  input: [\n    {\n      role: \"user\",\n      content: [\n        {\n          type: \"input_text\",\n          text: `You are grading an automated annual report segment extraction.\\n\\nEXPECTED SEGMENTS:\\n${$json.expected_segments || 'Not provided'}\\n\\nEXTRACTED JSON:\\n${JSON.stringify($json.extracted)}\\n\\nScore the extraction from 0.0 to 1.0 on:\\n1. segment_recall: Did it capture all expected segments without splitting products into separate segments or duplicating segments? (0.0 to 1.0)\\n2. rule_compliance: Did it avoid ESG classifications, avoid estimating/allocating revenue figures, and write concrete descriptions rather than generic placeholders? (0.0 to 1.0)\\n\\nReturn ONLY a JSON object with the keys \"segment_recall\" (number), \"rule_compliance\" (number), and \"critique\" (string). Do not use markdown formatting or backticks.`\n        }\n      ]\n    }\n  ]\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3456,
+        560
+      ],
+      "id": "c0c57cdf-7509-4f25-9542-8a901213c5b8",
+      "name": "LLM Judge Score",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "foKKc6uKKzNqNBsO",
+          "name": "OpenRouter Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst priorData = $('Evaluate Extraction Structure & Citations').first().json;\nlet scores = { segment_recall: 0, rule_compliance: 0, critique: \"Failed to parse judge output\" };\n\ntry {\n  const message = response.output.find(item => item.type === 'message');\n  const rawText = message?.content?.find(item => item.type === 'output_text')?.text || '';\n  const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();\n  scores = JSON.parse(cleaned);\n} catch (e) {}\n\nreturn [{\n  json: {\n    ...priorData,\n    segment_recall: scores.segment_recall || 0,\n    rule_compliance: scores.rule_compliance || 0,\n    critique: scores.critique || \"\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3632,
+        560
+      ],
+      "id": "af5a34eb-b0bf-43a8-b48a-57f0d8072127",
+      "name": "Parse Judge Response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "b4d0c643-7e5f-4a1b-8c4d-5e6f708192a3",
+              "leftValue": "={{ $('Evaluation Trigger').isExecuted }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        3808,
+        560
+      ],
+      "id": "2d529048-3ddb-4d27-a2a5-faa023f23734",
+      "name": "Is Evaluation Run?"
+    },
+    {
+      "parameters": {
+        "operation": "setMetrics",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.evaluation",
+      "typeVersion": 4.8,
+      "position": [
+        4000,
+        544
+      ],
+      "id": "56c78d8b-5cdc-4c1c-b9f0-41b879cce27a",
+      "name": "Log Evaluation Metrics"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        4144,
+        720
+      ],
+      "id": "3e272d40-06b2-4642-9f6b-f65780c8a97a",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "5VKuP0kzsOEUNMBn",
+          "name": "C26-openai-api-key"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Parse Relevant Pages": {
+      "main": [
+        [
+          {
+            "node": "Extract Identified Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identify Relevant Sections": {
+      "main": [
+        [
+          {
+            "node": "Parse Relevant Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDFco API": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Normalize Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluation Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Inputs": {
+      "main": [
+        [
+          {
+            "node": "Extract First 5 Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Extraction Structure & Citations": {
+      "main": [
+        [
+          {
+            "node": "LLM Judge Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Judge Score": {
+      "main": [
+        [
+          {
+            "node": "Parse Judge Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Judge Response": {
+      "main": [
+        [
+          {
+            "node": "Is Evaluation Run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Evaluation Run?": {
+      "main": [
+        [
+          {
+            "node": "Log Evaluation Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract First 5 Pages": {
+      "main": [
+        [
+          {
+            "node": "Identify Relevant Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Identified Pages": {
+      "main": [
+        [
+          {
+            "node": "PDFco API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF Input": {
+      "main": [
+        [
+          {
+            "node": "Revenue Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revenue Extraction": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Extraction Structure & Citations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Log Evaluation Metrics",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e87ed7ff-e3f5-4dce-a7df-fc28274363f7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b3178866478233b39ccab85cc4a6c6bdfb86963810969ae561a567c52042c3a"
+  },
+  "nodeGroups": [],
+  "id": "u6ALaS1eaKmJ1il9",
+  "tags": []
+}
