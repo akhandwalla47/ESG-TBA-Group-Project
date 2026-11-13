@@ -1,0 +1,142 @@
+{
+  "name": "esg-mcp-access",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "postgres-mcp",
+        "instructions": "Queries the company PostgreSQL database (read-only). Required input 'action' must be one of: 'list_tables' (lists all public tables; leave table_name and sql_query empty), 'get_schema' (returns columns and data types; requires 'table_name'), or 'select_query' (executes a read-only SELECT statement; requires 'sql_query' with a LIMIT 100 clause unless aggregating). Always call list_tables and get_schema before writing a select_query."
+      },
+      "id": "082ed6ca-2847-4086-9405-ad1a18bb73bd",
+      "name": "MCP Server Trigger",
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 1,
+      "position": [
+        592,
+        -736
+      ],
+      "webhookId": "postgres-external-mcp-01",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Lists all available tables in the public schema of the PostgreSQL database. Always call this first if you do not know the table names.",
+        "operation": "executeQuery",
+        "query": "SELECT table_name \nFROM information_schema.tables \nWHERE table_schema = 'public' \nORDER BY table_name;",
+        "options": {}
+      },
+      "id": "9fb91e15-9aee-4b73-a1e0-0d0256e3d543",
+      "name": "list_tables",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.5,
+      "position": [
+        400,
+        -496
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "nn2vj199s4mjr6GP",
+          "name": "Postgres account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Returns column names, data types, and nullability for a specific table. Call this before writing a SELECT query to avoid guessing column names.",
+        "operation": "executeQuery",
+        "query": "SELECT column_name, data_type, is_nullable \nFROM information_schema.columns \nWHERE table_schema = 'public' \n  AND table_name = '{{ $fromAI('table_name', 'Exact name of the table to inspect', 'string') }}' \nORDER BY ordinal_position;",
+        "options": {}
+      },
+      "id": "875878ee-1d9a-41ea-823a-3f5588d0b59b",
+      "name": "get_table_schema",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.5,
+      "position": [
+        608,
+        -496
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "nn2vj199s4mjr6GP",
+          "name": "Postgres account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Executes a read-only PostgreSQL SELECT query and returns rows. Always include a LIMIT clause (e.g., LIMIT 100) unless computing aggregates like COUNT or SUM.",
+        "operation": "executeQuery",
+        "query": "={{ $fromAI('sql_query', 'A valid read-only PostgreSQL SELECT statement', 'string') }}",
+        "options": {}
+      },
+      "id": "c9d49717-e5aa-4186-ba53-64f505baeb36",
+      "name": "execute_select_query",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.5,
+      "position": [
+        800,
+        -496
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "nn2vj199s4mjr6GP",
+          "name": "Postgres account 7"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "list_tables": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_table_schema": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "execute_select_query": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "versionId": "7984d58b-64af-4f80-8c0e-f8e8bc8fa845",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b3178866478233b39ccab85cc4a6c6bdfb86963810969ae561a567c52042c3a"
+  },
+  "nodeGroups": [],
+  "id": "3XMWT1IodUe4WCYw",
+  "tags": []
+}
