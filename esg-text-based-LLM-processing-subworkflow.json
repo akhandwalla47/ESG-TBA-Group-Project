@@ -1,0 +1,159 @@
+{
+  "name": "esg-text-based-LLM-processing-subworkflow",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const request = $('Start').first().json._firstItem;\nconst filing = $('Start').first().json.Retrieve_File_Location__firstItem;\n\nconst text = $json.extracted_text || $json.text || '';\n\nif (!text.trim()) {\n  throw new Error('No usable PDF text was supplied.');\n}\n\nreturn [{\n  json: {\n    company_id: request.company_id,\n    company_name: request.company_name,\n    company_crn: request.company_crn,\n    filing_id: filing.filing_id,\n    financial_year: filing.financial_year,\n\n    input_type: 'text',\n    extracted_text: text,\n    file_url: null,\n    relevant_pages: [],\n\n    extraction_method: 'native_pdf_text'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        64
+      ],
+      "id": "445a5a83-f8f1-4ce9-ae77-9fa051e32fff",
+      "name": "Prepare Text Input"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=### Revenue Stream and Business Activity Extraction Instructions\n\nYour task is to identify and extract the company's reported revenue streams and underlying business activities from its annual report.\n\nThe objective is to produce structured, evidence-based information that allows users to explore a company's business activities and subsequently assess them against their own ESG criteria.\n\n**1. Identify reported revenue streams**\n\n- Identify all separately reported operating segments, divisions, business lines and revenue streams disclosed in the annual report.\n- Prioritise the consolidated financial statements, segment reporting notes, revenue notes and disaggregation of revenue disclosures.\n- Preserve the original segment or revenue stream names used in the annual report in `stream_name`.\n- Create a clear, concise and descriptive `display_name` that explains the nature of the business represented by the stream.\n- Do not replace the original name with an ESG classification or screening category.\n- Do not create duplicate streams for the same reported business.\n\n**2. Extract business descriptions**\n\n- Provide a specific and informative description of the activities performed within each reported revenue stream.\n- Avoid generic descriptions such as \"energy operations\" or \"commercial activities\".\n- Identify the actual products, services, operations and markets involved.\n- Where a segment contains several distinct activities, describe each separately.\n- Use the company's own disclosures as the primary source.\n- Do not infer activities from the company or subsidiary name alone.\n\n**3. Identify individual business activities**\n\n- Extract specific business activities separately in the `business_activities` array.\n- Each activity should have a descriptive `activity_name`, a `related_stream` identifying its parent reported segment, and a clear `business_description`.\n- For example, a segment named \"Renewables and Energy Solutions\" may contain activities such as wind power generation, solar power generation, battery storage and hydrogen production.\n- A segment named \"Upstream\" may contain activities such as crude oil extraction and natural gas production.\n- Do not automatically treat these activities as independently reported revenue streams.\n- Do not assign an ESG category or make an ESG screening decision. This will be performed separately by WF04.\n\n**4. Extract revenue figures**\n\n- Only extract monetary revenue figures explicitly disclosed and attributable to the relevant reported stream or activity.\n- Look for revenue, sales, turnover, external revenue, net sales and revenue from contracts with customers.\n- Distinguish revenue from segment profit, adjusted earnings, EBITDA, operating income, cash flow, capital expenditure and operational metrics.\n- Never use profit, earnings, production volumes, sales volumes, capacity or other operational measures as substitutes for revenue.\n- Never allocate consolidated company revenue across segments or business activities.\n- Never estimate or calculate activity-level revenue from operational metrics.\n- If a named stream is identifiable but its revenue is not separately disclosed in the supplied material, retain the stream with `stream_revenue: null` and `revenue_disclosure_status: \"insufficient_evidence\"`.\n\n**5. Supporting evidence**\n\n- Provide supporting evidence for each reported stream and business activity.\n- Explain which annual report disclosure supports the identified name and business description.\n- Where revenue is disclosed, include the relevant reported figure and explain how it is attributed to the stream.\n- Where revenue is unavailable, explain why a reliable attributable figure cannot be established.\n- Include the original physical PDF page number for every evidence reference wherever available.\n- Do not describe segment profit, adjusted earnings or operational data as evidence of revenue.\n- If a referenced financial note or disclosure is missing from the supplied PDF pages, explicitly identify it as a disclosure gap.\n\n**6. Naming and consistency**\n\n- Keep `stream_name` consistent with the original annual report terminology.\n- Use `display_name` to make the business understandable to a dashboard user who may not recognise the company's internal segment terminology.\n- Use specific activity names rather than broad labels.\n- Keep naming consistent across the company's reported segments and activities.\n- Do not use any of the user's ESG criteria as predetermined revenue stream names.\n\n**7. General restrictions**\n\n- Extract the latest reporting year only.\n- Do not include prior-year comparative revenue figures.\n- Do not double-count revenue between segments, activities or consolidated totals.\n- Use null when information is unavailable rather than inventing a value or using zero.\n- Do not make ESG classifications, apply thresholds or calculate ESG exposure.\n- Preserve uncertainty and identify missing disclosures rather than filling gaps with assumptions.\n\nCOMPANY:\n{{ $json.company_name }}\n\nCOMPANY CRN:\n{{ $json.company_crn }}\n\nEXPECTED FINANCIAL YEAR:\n{{ $json.financial_year }}\n\nANNUAL REPORT TEXT:\n{{ $json.extracted_text }}\n\n## OBJECTIVE\n\nIdentify the company's named revenue streams, business segments or separately disclosed business lines and extract the monetary revenue figure associated with each one, where explicitly reported.\n\nThe aim is to produce a complete list of identifiable revenue streams, including streams for which a corresponding revenue figure cannot be established.\n\n## 1. SEARCH FOR REVENUE DISCLOSURES\n\nReview the supplied report text for revenue information in:\n\n- Consolidated income statements.\n- Revenue notes and notes to the financial statements.\n- Segment reporting and operating segment disclosures.\n- Revenue disaggregation tables.\n- Business or divisional financial performance tables.\n- Product, service or geographical revenue breakdowns, where applicable.\n\nLook for different terminology used to describe revenue, including:\n\n- Revenue\n- Sales\n- Turnover\n- External revenue\n- Revenue from contracts with customers\n- Segment revenue\n- Net sales\n- Operating revenue\n\nDo not assume that every financial measure containing the word income is revenue.\n\n## 2. IDENTIFY NAMED REVENUE STREAMS\n\nExtract the names of separately identifiable revenue streams, business segments or business lines reported by the company.\n\nPreserve the company's original terminology wherever possible.\n\nFor every identified stream, create one revenue_streams record.\n\nDo not create separate revenue streams for individual operational activities unless the company identifies them as separate revenue-generating segments or business lines.\n\nDo not use subsidiaries as revenue streams simply because they are owned by the company.\n\n## 3. MATCH REVENUE FIGURES TO STREAMS\n\nFor every identified stream:\n\n- Find the corresponding monetary revenue figure in the financial statements or notes.\n- Match figures using the stream name, segment name or an explicitly established equivalent.\n- Extract only the figure for the latest reporting year.\n- Retain the reported currency and unit.\n- Record the original PDF page number where the figure appears.\n- Include a short explanation of the evidence supporting the match.\n\nDo not associate a figure with a stream based solely on its proximity in the text.\n\nDo not confuse revenue with:\n- Operating profit or loss.\n- Adjusted earnings.\n- EBITDA.\n- Profit before or after tax.\n- Cash flow.\n- Capital expenditure.\n- Operating expenditure.\n- Assets or liabilities.\n- Production, sales or processing volumes.\n- Other operational performance metrics.\n\nDo not use total company revenue as the revenue figure for an individual segment.\n\nDo not add together figures unless the report explicitly provides the calculation or the task requires no such calculation. Do not double count overlapping revenue measures.\n\n## 4. HANDLE INSUFFICIENT EVIDENCE\n\nIf a named revenue stream or segment is identifiable but its corresponding monetary revenue figure cannot be found:\n\n- Still include the stream in revenue_streams.\n- Set stream_revenue to null.\n- Set revenue_disclosure_status to insufficient_evidence.\n- Explain what information was found and why it was insufficient.\n- Include the source page where the stream or its business description was identified, if available.\n\nNever estimate, calculate or infer missing revenue.\n\nDo not substitute profit, EBITDA, earnings, operational volumes or other financial measures for revenue.\n\nIf the report provides only consolidated company revenue, do not distribute that figure across individual streams.\n\n## 5. FINANCIAL DATA\n\nExtract relevant financial statement metrics separately into financial_data.\n\nClassify each metric accurately as revenue, income, expense, asset, liability, cash_flow or other.\n\nKeep financial_data separate from revenue_streams. A financial metric should only appear as a stream's revenue when it is explicitly attributable to that stream and represents revenue.\n\n## 6. BUSINESS ACTIVITIES AND SUBSIDIARIES\n\nExtract relevant business activities and subsidiaries into their respective arrays.\n\nBusiness activities describe what the company does. They are not automatically revenue streams.\n\nOnly populate attributable_revenue when a monetary figure is explicitly disclosed and attributable to that activity.\n\nDo not infer activity revenue from production volumes, subsidiary ownership, operational measures or general business descriptions.\n\n## 7. REPORTING PERIOD AND EVIDENCE\n\nUse the latest reporting year only. Do not extract comparative prior-year figures as the current reporting year's values.\n\nPreserve the reported currency and unit.\n\nUse physical PDF page numbers where available. Do not invent page references. If the text does not provide reliable page numbers, use null.\n\nIf a relevant financial note appears to be missing from the supplied text, identify it in disclosure_gaps.\n\n## 8. OUTPUT REQUIREMENTS\n\nReturn every required field using the connected Structured Output Parser schema.\n\nInclude all identifiable named revenue streams, even where their revenue values are null.\n\nUse null for unavailable monetary figures, never zero.\n\nDo not make ESG screening decisions or assign ESG classifications.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2608,
+        64
+      ],
+      "id": "1e3adac6-a0c0-4a89-b632-52457f2f831c",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2752,
+        240
+      ],
+      "id": "27405de0-4a81-4d25-9a00-12b92d62619a",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.7-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        2608,
+        224
+      ],
+      "id": "0031c076-6f72-44a7-acb0-6df6172c3c4c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "_firstItem",
+              "type": "any"
+            },
+            {
+              "name": "Retrieve_File_Location__firstItem",
+              "type": "any"
+            },
+            {
+              "name": "extracted_text",
+              "type": "any"
+            },
+            {
+              "name": "text",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "id": "d3f861b6-29f9-46e8-ab93-b42008c6c7fa",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        2176,
+        64
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Prepare Text Input": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Prepare Text Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "14d5726c-657a-4947-84a8-23a8d1920d04",
+  "meta": {
+    "instanceId": "0b3178866478233b39ccab85cc4a6c6bdfb86963810969ae561a567c52042c3a"
+  },
+  "nodeGroups": [],
+  "id": "i3MGryxFIimT3wmj",
+  "tags": []
+}
