@@ -1,0 +1,1362 @@
+{
+  "name": "esg-main-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "screen-company",
+        "options": {}
+      },
+      "id": "bd766eaa-caf9-4754-b265-13e84900c110",
+      "name": "Receive Screening Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -144,
+        -384
+      ],
+      "webhookId": "d8d9c243-314d-4a72-a53d-da14e7d815c2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook calls nest fields under body; pinned/test data may be flat\nconst input = ($json.body && typeof $json.body === 'object') ? $json.body : $json;\nlet crn = String(input.company_crn || '').trim();\n\n// If numeric and less than 8 chars, pad with leading zeros\nif (/^\\d+$/.test(crn)) {\n  crn = crn.padStart(8, '0');\n}\n\nreturn {\n  ...input,\n  company_crn: crn\n};"
+      },
+      "id": "52724b7c-bf25-4d75-b7bb-bfdac85581d1",
+      "name": "Normalise CRN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -656
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Find Latest Uploaded Reports for the Company').item.json.doc_metadata_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1168,
+        0
+      ],
+      "id": "acaf17d5-66eb-4e4e-b0ad-8b69496f258f",
+      "name": "Get Document Metadata",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "yWKO0b72ddSzlBl8",
+          "name": "Company's House API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Find Latest Uploaded Reports for the Company').item.json.doc_metadata_url }}/content",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/pdf"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1392,
+        0
+      ],
+      "id": "9b873f0a-e483-4d9e-87f9-54a6e8d339c7",
+      "name": "Download PDF Document",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "yWKO0b72ddSzlBl8",
+          "name": "Company's House API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Normalise CRN').item.json.company_crn }}",
+          "mode": "id"
+        },
+        "changeFileContent": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1616,
+        -336
+      ],
+      "id": "76f507bf-db34-44b7-901a-8f664dd51da9",
+      "name": "Update file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "USTYNOes54NWU3AB",
+          "name": "Amaal Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "87725855-bda1-4412-b187-5100cd60f5ec",
+              "leftValue": "={{ $json.filing_date ? new Date($json.filing_date).toISOString().split('T')[0] : '' }}",
+              "rightValue": "={{ $('Find Latest Uploaded Reports for the Company').item.json.filing_date }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        992,
+        -656
+      ],
+      "id": "9b8df989-51e4-4c3f-9ae1-1accafa32f0a",
+      "name": "Is Filing Up To Date?"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.company-information.service.gov.uk/company/{{ $json.company_crn }}/filing-history?category=accounts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1e6f9aed-c097-4bee-a434-0bf423a96ba1",
+      "name": "Get Filing History from Company's House",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        -656
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "yWKO0b72ddSzlBl8",
+          "name": "Company's House API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $json.items || [];\n\nif (items.length === 0) {\n  throw new Error(`No accounts filings found for CRN: ${$('Normalise CRN').item.json.company_crn}`);\n}\n\n// Filter for valid account descriptions and document metadata links\nconst accountsFiling = items.find(item => \n  item.category === 'accounts' && \n  item.links && \n  item.links.document_metadata\n);\n\nif (!accountsFiling) {\n  throw new Error('No downloadable accounts metadata link found in filing history.');\n}\n\n// Extract the raw document metadata URL\n// e.g. \"https://document-api.company-information.service.gov.uk/document/{doc_id}\"\nconst docMetadataUrl = accountsFiling.links.document_metadata;\nconst filingDate = accountsFiling.date;\nconst description = accountsFiling.description || '';\n\n// Approximate financial year from action_date or filing date\nconst financialYear = accountsFiling.action_date \n  ? new Date(accountsFiling.action_date).getFullYear() \n  : new Date(filingDate).getFullYear();\n\nreturn {\n  ...$('Normalise CRN').item.json,\n  filing_date: filingDate,\n  financial_year: financialYear,\n  filing_description: description,\n  doc_metadata_url: docMetadataUrl\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -656
+      ],
+      "id": "c88ace57-a1f9-4528-a61b-0f6f2213e292",
+      "name": "Find Latest Uploaded Reports for the Company"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT company_id, filing_date, extraction_status, filing_doc_url, drive_file_id\nFROM companies\nWHERE company_crn = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.company_crn }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        672,
+        -656
+      ],
+      "id": "36a6481e-74c8-4ead-9636-e9ab3fffb9ba",
+      "name": "Retrive All Data from companies Table",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "jCwQadGCVNsnaF2G",
+          "name": "Postgres account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "5a2dffee-b3c5-4ab2-803f-568e40f251c2",
+              "leftValue": "={{ $json.company_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        848,
+        -384
+      ],
+      "id": "af94847b-0d19-48e0-8e80-89251bae31da",
+      "name": "Check if Company Exists"
+    },
+    {
+      "parameters": {
+        "name": "={{ $('Find Latest Uploaded Reports for the Company').item.json.company_crn }}_latest.pdf",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1ebNDAWJ9SQN5e76scNbD_z80LhxAf_ef",
+          "mode": "list",
+          "cachedResultName": "ESG Revenue Screener",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1ebNDAWJ9SQN5e76scNbD_z80LhxAf_ef"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1616,
+        0
+      ],
+      "id": "1e4524e1-1128-4ddc-93cb-febe3fc84abb",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "USTYNOes54NWU3AB",
+          "name": "Amaal Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Find Latest Uploaded Reports for the Company').item.json.doc_metadata_url }}/content",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/pdf"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1392,
+        -336
+      ],
+      "id": "7e276ee7-8806-4746-88c7-97921322076f",
+      "name": "Download Recent PDF Document",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "yWKO0b72ddSzlBl8",
+          "name": "Company's House API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Find Latest Uploaded Reports for the Company').item.json.doc_metadata_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1168,
+        -336
+      ],
+      "id": "71b29f74-ba94-4b14-aa91-6cfcdd4e55bf",
+      "name": "Get Recent Document Metadata",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "yWKO0b72ddSzlBl8",
+          "name": "Company's House API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO companies (\n  company_name,\n  company_crn,\n  sector,\n  financial_year,\n  filing_date,\n  total_reported_revenue,\n  filing_doc_url,\n  drive_file_id,\n  drive_folder_id,\n  extraction_status,\n  created_at\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()\n)\nON CONFLICT (company_crn) \nDO UPDATE SET\n  financial_year = EXCLUDED.financial_year,\n  filing_date = EXCLUDED.filing_date,\n  filing_doc_url = EXCLUDED.filing_doc_url,\n  drive_file_id = EXCLUDED.drive_file_id,\n  drive_folder_id = EXCLUDED.drive_folder_id,\n  extraction_status = EXCLUDED.extraction_status\nRETURNING company_id;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Find Latest Uploaded Reports for the Company').item.json.company_name,\n  $('Find Latest Uploaded Reports for the Company').item.json.company_crn,\n  $('Find Latest Uploaded Reports for the Company').item.json.sector || 'Unassigned',\n  $('Find Latest Uploaded Reports for the Company').item.json.financial_year,\n  $('Find Latest Uploaded Reports for the Company').item.json.filing_date,\n  0,\n  $json.webViewLink,\n  $json.id,\n  $json.parents ? $json.parents[0] : '',\n  'PENDING_OCR'\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        1920,
+        -336
+      ],
+      "id": "246e0345-53fd-4333-9de0-10b304c81cba",
+      "name": "Insert Company Information into Database",
+      "credentials": {
+        "postgres": {
+          "id": "jCwQadGCVNsnaF2G",
+          "name": "Postgres account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "d1VMo1DgIn2lFXdx",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/d1VMo1DgIn2lFXdx",
+          "cachedResultName": "esg-business-activities-extraction"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "company_id": "={{ $json.company_id }}"
+          },
+          "matchingColumns": [
+            "company_id"
+          ],
+          "schema": [
+            {
+              "id": "company_id",
+              "displayName": "company_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        2128,
+        -688
+      ],
+      "id": "d5acbf7a-47f5-4198-a5cc-c92479e03f05",
+      "name": "ESG-Information-Extraction",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM companies\nWHERE company_crn = '{{ $('Normalise CRN').item.json.company_crn }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        2656,
+        -432
+      ],
+      "id": "a7467e64-0709-4778-98a5-31774b1aeef1",
+      "name": "Get Updated Company Information",
+      "credentials": {
+        "postgres": {
+          "id": "nn2vj199s4mjr6GP",
+          "name": "Postgres account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appcggGiOP6DX4jqU",
+          "mode": "list",
+          "cachedResultName": "ESGenius",
+          "cachedResultUrl": "https://airtable.com/appcggGiOP6DX4jqU"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblQMt3mqSZn6gSUN",
+          "mode": "list",
+          "cachedResultName": "companies",
+          "cachedResultUrl": "https://airtable.com/appcggGiOP6DX4jqU/tblQMt3mqSZn6gSUN"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "company_name": "={{ $json.company_name }}",
+            "company_id": "={{ $json.company_id }}",
+            "company_crn": "={{ $json.company_crn }}",
+            "filing_date": "={{ $json.filing_date }}",
+            "total_reported_revenue": "={{ $json.total_reported_revenue }}",
+            "filing_doc_url": "={{ $json.filing_doc_url }}",
+            "drive_file_id": "={{ $json.drive_file_id }}",
+            "drive_folder_id": "={{ $json.drive_folder_id }}",
+            "extraction_status": "={{ $json.extraction_status }}",
+            "last_extracted_at": "={{ $json.last_extracted_at }}",
+            "extraction_error": "={{ $json.extraction_error }}",
+            "created_at": "={{ $json.created_at.slice(0, 10) }}",
+            "financial_year": "={{ $json.financial_year }}"
+          },
+          "matchingColumns": [
+            "company_crn"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "company_id",
+              "displayName": "company_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "company_id copy",
+              "displayName": "company_id copy",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "company_name",
+              "displayName": "company_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sector",
+              "displayName": "sector",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "company_crn",
+              "displayName": "company_crn",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "financial_year",
+              "displayName": "financial_year",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "filing_date",
+              "displayName": "filing_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "total_reported_revenue",
+              "displayName": "total_reported_revenue",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "filing_doc_url",
+              "displayName": "filing_doc_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "drive_file_id",
+              "displayName": "drive_file_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "drive_folder_id",
+              "displayName": "drive_folder_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "extraction_status",
+              "displayName": "extraction_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "last_extracted_at",
+              "displayName": "last_extracted_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "extraction_error",
+              "displayName": "extraction_error",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "revenue_streams",
+              "displayName": "revenue_streams",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "revenue_streams 2",
+              "displayName": "revenue_streams 2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "revenue_streams 3",
+              "displayName": "revenue_streams 3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        -432
+      ],
+      "id": "cbcebb46-71cd-4d29-8b56-3b4725fb545e",
+      "name": "Update Companies Table",
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "JzOvT90LotNuGZGY",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM revenue_streams\nWHERE company_id = {{ $('Get Updated Company Information').item.json.company_id }};\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        3104,
+        -432
+      ],
+      "id": "b5434a67-e57d-43ce-8263-5f1a962a5e2f",
+      "name": "Get Updated Revenue Information",
+      "credentials": {
+        "postgres": {
+          "id": "nn2vj199s4mjr6GP",
+          "name": "Postgres account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appcggGiOP6DX4jqU",
+          "mode": "list",
+          "cachedResultName": "ESGenius",
+          "cachedResultUrl": "https://airtable.com/appcggGiOP6DX4jqU"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblyLFhUb3puCDXvT",
+          "mode": "list",
+          "cachedResultName": "revenue_streams",
+          "cachedResultUrl": "https://airtable.com/appcggGiOP6DX4jqU/tblyLFhUb3puCDXvT"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "revenue_id": "={{ $json.revenue_id }}",
+            "stream_name": "={{ $json.stream_name }}",
+            "created_at": "={{ $json.created_at.slice(0,10) }}",
+            "display_name": "={{ $json.display_name }}",
+            "business_activities": "={{ $json.business_activities }}",
+            "source_page": "={{ $json.source_page }}",
+            "reporting_year": "={{ $json.reporting_year }}",
+            "business_description": "={{ $json.business_description }}",
+            "supporting_evidence": "={{ $json.supporting_evidence }}",
+            "revenue_disclosure_status": "={{ $json.revenue_disclosure_status }}",
+            "company_id": "={{ $json.company_id }}",
+            "esg_label": "={{ $json.esg_label }}"
+          },
+          "matchingColumns": [
+            "revenue_id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "revenue_id",
+              "displayName": "revenue_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "company_id",
+              "displayName": "company_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "stream_name",
+              "displayName": "stream_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "display_name",
+              "displayName": "display_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "business_activities",
+              "displayName": "business_activities",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source_page",
+              "displayName": "source_page",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "reporting_year",
+              "displayName": "reporting_year",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "business_description",
+              "displayName": "business_description",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "supporting_evidence",
+              "displayName": "supporting_evidence",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "revenue_disclosure_status",
+              "displayName": "revenue_disclosure_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "companies",
+              "displayName": "companies",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "esg_label",
+              "displayName": "esg_label",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        3328,
+        -432
+      ],
+      "id": "317376e4-b69f-4f36-844d-cdd4cda50f69",
+      "name": "Update Revenue Table",
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "JzOvT90LotNuGZGY",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "561f7be5-c2c9-4ed4-8cfb-6546ab81d880",
+              "leftValue": "={{ $json.extraction_status }}",
+              "rightValue": "PENDING_OCR",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1280,
+        -672
+      ],
+      "id": "31beee6e-6525-4f96-b04d-56fdf45d7b59",
+      "name": "Is It Processed?"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "mDVKd1LMczzUpZoo",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/mDVKd1LMczzUpZoo",
+          "cachedResultName": "esg-label-classifier"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "company_id": "={{ $json.company_id }}"
+          },
+          "matchingColumns": [
+            "company_id"
+          ],
+          "schema": [
+            {
+              "id": "company_id",
+              "displayName": "company_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        2320,
+        -688
+      ],
+      "id": "18e6ea97-f5c3-454a-bc30-a5a3ce4be013",
+      "name": "Label Assigner"
+    }
+  ],
+  "pinData": {
+    "Receive Screening Request": [
+      {
+        "json": {
+          "headers": {},
+          "query": {},
+          "params": {},
+          "body": {
+            "company_crn": "02723534",
+            "company_name": "AstraZeneca PLC",
+            "criteria_id": "CRI-001"
+          }
+        }
+      }
+    ],
+    "Receive Screening Request1": [
+      {
+        "json": {
+          "headers": {},
+          "query": {},
+          "params": {},
+          "body": {
+            "company_crn": "02342138",
+            "company_name": "Babcock International Group PLC",
+            "criteria_id": "CRI-001"
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Receive Screening Request": {
+      "main": [
+        [
+          {
+            "node": "Normalise CRN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise CRN": {
+      "main": [
+        [
+          {
+            "node": "Get Filing History from Company's House",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Document Metadata": {
+      "main": [
+        [
+          {
+            "node": "Download PDF Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF Document": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update file": {
+      "main": [
+        [
+          {
+            "node": "Insert Company Information into Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Filing Up To Date?": {
+      "main": [
+        [
+          {
+            "node": "Is It Processed?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Recent Document Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Filing History from Company's House": {
+      "main": [
+        [
+          {
+            "node": "Find Latest Uploaded Reports for the Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Latest Uploaded Reports for the Company": {
+      "main": [
+        [
+          {
+            "node": "Retrive All Data from companies Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrive All Data from companies Table": {
+      "main": [
+        [
+          {
+            "node": "Check if Company Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Company Exists": {
+      "main": [
+        [
+          {
+            "node": "Is Filing Up To Date?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Document Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload file": {
+      "main": [
+        [
+          {
+            "node": "Insert Company Information into Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Recent PDF Document": {
+      "main": [
+        [
+          {
+            "node": "Update file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recent Document Metadata": {
+      "main": [
+        [
+          {
+            "node": "Download Recent PDF Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Company Information into Database": {
+      "main": [
+        [
+          {
+            "node": "ESG-Information-Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESG-Information-Extraction": {
+      "main": [
+        [
+          {
+            "node": "Label Assigner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Updated Company Information": {
+      "main": [
+        [
+          {
+            "node": "Update Companies Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Companies Table": {
+      "main": [
+        [
+          {
+            "node": "Get Updated Revenue Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Updated Revenue Information": {
+      "main": [
+        [
+          {
+            "node": "Update Revenue Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is It Processed?": {
+      "main": [
+        [
+          {
+            "node": "ESG-Information-Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Updated Company Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Label Assigner": {
+      "main": [
+        [
+          {
+            "node": "Get Updated Company Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "any",
+    "availableInMCP": false
+  },
+  "versionId": "acf0315c-3f69-445d-8df4-54bd8f7a85c0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b3178866478233b39ccab85cc4a6c6bdfb86963810969ae561a567c52042c3a"
+  },
+  "nodeGroups": [
+    {
+      "id": "749635e5-4a84-4413-b56e-2f76462cf209",
+      "name": "Finding Company Information",
+      "nodeIds": [
+        "52724b7c-bf25-4d75-b7bb-bfdac85581d1",
+        "1e6f9aed-c097-4bee-a434-0bf423a96ba1",
+        "c88ace57-a1f9-4528-a61b-0f6f2213e292",
+        "36a6481e-74c8-4ead-9636-e9ab3fffb9ba"
+      ]
+    },
+    {
+      "id": "a92ae255-dcb1-4ef2-8c72-c01a717b6248",
+      "name": "Update Filing",
+      "nodeIds": [
+        "76f507bf-db34-44b7-901a-8f664dd51da9",
+        "7e276ee7-8806-4746-88c7-97921322076f",
+        "71b29f74-ba94-4b14-aa91-6cfcdd4e55bf"
+      ]
+    },
+    {
+      "id": "164773b2-5813-428d-a830-5272d1805537",
+      "name": "Upload New Filing",
+      "nodeIds": [
+        "acaf17d5-66eb-4e4e-b0ad-8b69496f258f",
+        "9b873f0a-e483-4d9e-87f9-54a6e8d339c7",
+        "1e4524e1-1128-4ddc-93cb-febe3fc84abb"
+      ]
+    },
+    {
+      "id": "66414086-2c65-4105-86ee-24cf612a6154",
+      "name": "Upload Information to Airtable",
+      "nodeIds": [
+        "a7467e64-0709-4778-98a5-31774b1aeef1",
+        "cbcebb46-71cd-4d29-8b56-3b4725fb545e",
+        "b5434a67-e57d-43ce-8263-5f1a962a5e2f",
+        "317376e4-b69f-4f36-844d-cdd4cda50f69"
+      ]
+    }
+  ],
+  "id": "fP6vb0SpHde3fgOm",
+  "tags": []
+}
