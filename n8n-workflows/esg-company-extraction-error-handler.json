@@ -1,0 +1,133 @@
+{
+  "name": "esg-company-extraction-error-handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        256,
+        336
+      ],
+      "id": "719f77ca-5c46-4fb9-8af5-e15ca5b2c421",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const execution = $json.execution || {};\nconst workflow = $json.workflow || {};\nconst errorObj = execution.error || {};\n\nconst failedNode = execution.lastNodeExecuted || 'Unknown node';\nconst rawMessage = errorObj.message || errorObj.description || 'Unknown workflow error';\nconst executionUrl = execution.url || '';\n\nconst formattedError = [\n  `[Node: ${failedNode}] ${rawMessage}`,\n  executionUrl ? `Execution: ${executionUrl}` : null\n].filter(Boolean).join(' | ');\n\nreturn [{\n  json: {\n    workflow_name: workflow.name ?? null,\n    execution_id: execution.id ?? null,\n    execution_url: executionUrl,\n    failed_node: failedNode,\n    error_message: rawMessage,\n    formatted_error: formattedError\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        336
+      ],
+      "id": "d2388043-3e6e-4b0d-9ce1-a99c7eef43ac",
+      "name": "Format Error Details"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE companies\nSET\n    extraction_status = 'failed',\n    extraction_error = $1\nWHERE extraction_status = 'processing'\nRETURNING\n    company_id,\n    company_name,\n    extraction_status,\n    extraction_error;",
+        "options": {
+          "queryReplacement": "={{\n  [\n    $json.formatted_error\n  ]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        704,
+        336
+      ],
+      "id": "a6560e15-c12e-4b55-8339-c7ef9ef8eaca",
+      "name": "Mark Processing Company Failed",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "UaVMen7JCP5Sk7OP",
+          "name": "Postgres account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0CE1V3FLV8",
+          "mode": "id"
+        },
+        "text": "={{ \"🚨 *Workflow Error:* \" + ($('Format Error Details').first().json.workflow_name || \"Unknown Workflow\") + \"\\n*Company:* \" + ($json.company_id ? ($json.company_name || \"Unknown\") + \" (ID: \" + $json.company_id + \")\" : \"None in processing state\") + \"\\n*Failed Node:* `\" + $('Format Error Details').first().json.failed_node + \"`\\n*Error:* \" + $('Format Error Details').first().json.error_message + ($('Format Error Details').first().json.execution_url ? \"\\n*Execution:* <\" + $('Format Error Details').first().json.execution_url + \"|View Execution>\" : \"\") }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        336
+      ],
+      "id": "72385cd8-9689-4dc4-8409-02064854a2df",
+      "name": "Send Error to Slack",
+      "webhookId": "e6e122f9-5e56-42f6-9f85-f39853ae68dc",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "Qi46mdsVCTRbF9a9",
+          "name": "Slack account 13"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Error Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Details": {
+      "main": [
+        [
+          {
+            "node": "Mark Processing Company Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Processing Company Failed": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "any",
+    "availableInMCP": false
+  },
+  "versionId": "bff1f26c-0cc8-420c-891b-88209b2175b2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b3178866478233b39ccab85cc4a6c6bdfb86963810969ae561a567c52042c3a"
+  },
+  "nodeGroups": [],
+  "id": "9D1sVQeIuKETC0qG",
+  "tags": []
+}
