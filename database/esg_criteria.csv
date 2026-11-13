@@ -1,0 +1,18 @@
+criteria_id,criteria_name,criteria_description,threshold,screening_type,created_at
+1,Renewable energy,"Revenue generated from wind, solar, hydro, and geothermal energy operations.",20,min,2025-01-10 9:00:00
+2,Healthcare,"Revenue derived from healthcare services, medical devices, and hospital operations.",10,min,2025-01-10 9:15:00
+3,Medical research,"Revenue from clinical trials, pharmaceutical R&D, and biotechnology research.",5,min,2025-01-10 9:30:00
+4,Fossil fuels,"Revenue derived from oil, gas, and thermal coal extraction or power generation.",10,max,2025-01-10 10:00:00
+5,Tobacco,"Revenue from cultivation, production, or distribution of tobacco and nicotine products.",12,max,2025-01-10 10:15:00
+6,Gambling,"Revenue generated from casinos, lotteries, and online betting operations.",11,max,2025-01-10 10:30:00
+7,Weapons & defense,"Revenue derived from military contracting, weapons systems, firearms, and ammunition production.",5,max,2025-01-10 10:45:00
+8,Adult entertainment,"Revenue generated from production, distribution, or broadcasting of adult entertainment media.",5,max,2025-01-10 11:00:00
+10,Nuclear power,"Revenue derived from nuclear power generation, uranium mining, and nuclear reactor manufacturing.",10,max,2025-01-10 11:30:00
+11,Alcohol,"Revenue derived from the brewing, distilling, distribution, and wholesale of alcoholic beverages.",10,max,2025-01-10 11:45:00
+12,Clean technology,"Revenue generated from smart grids, battery storage, LED lighting, and energy-efficient systems.",15,min,2025-01-10 12:00:00
+13,Sustainable water,"Revenue derived from water purification, wastewater treatment, desalination, and recycling technology.",10,min,2025-01-10 12:15:00
+14,Waste management,"Revenue from municipal and industrial recycling, composting, and resource recovery operations.",10,min,2025-01-10 12:30:00
+15,Sustainable agriculture,"Revenue from certified organic farming, sustainable forestry, and regenerative agricultural practices.",10,min,2025-01-10 12:45:00
+16,Green building,"Revenue derived from eco-certified construction materials, green building design, and retrofitting.",15,min,2025-01-09 13:00:00
+,Affordable/Social Housing,"Revenue from the development, construction, ownership, management and provision of affordable housing and social housing.",10,min,2025-01-10 13:00:00
+,Education and Training,"Revenue from educational institutions, vocational training, professional education and educational services.",10,min,2025-01-11 13:00:00
